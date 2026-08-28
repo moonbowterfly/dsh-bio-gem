@@ -285,9 +285,11 @@ class Validator:
     # ------------------------------------------------------------------ run
     def run(self, medium=None, phenotype_table=None, essential_test=None,
             reference_growth=None, reference_essential=None, carbon_mode="supplement"):
-        from gapfind import resolve_medium
+        from gapfind import resolve_medium, expand_medium
+        medium, _preset = expand_medium(medium)
         resolved_med, unresolved = resolve_medium(self.m, medium) if medium else ({}, [])
         report = {"model": self.path,
+                  "units": {"growth": "mmol/gDW/h", "note": "objective_value 是 FBA 通量（mmol/gDW/h），不是比生长速率 μ（h⁻¹）"},
                   "g1": self.g1_load(),
                   "g2": self.g2_balance()}
         g3 = self.g3_growth(resolved_med, reference_growth)

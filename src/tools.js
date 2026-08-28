@@ -54,7 +54,7 @@ function buildTool() {
       out_dir: { type: 'string', description: '输出目录，缺省 ~/.dsh/dsh-bio-gem/models' },
       target_medium: {
         type: 'object', additionalProperties: true,
-        description: '目标培养基（自然名 → lower_bound，如 {"D-Glucose": -5, "NH3": -10, "O2": -12.5}）。跨引擎自动解析（gapseq/BiGG 命名均可）。',
+        description: '目标培养基：可传 {"medium_name": "AB"/"M9"}（内置完整成分）或自然名成分字典 {"D-Glucose": -5, "NH3": -10, ...}。跨引擎自动解析。',
       },
     },
     timeoutMs: 900_000,
@@ -110,7 +110,7 @@ export function registerTools(ctx) {
       '触发词：验证模型、质量检查、五道关卡。',
     parameters: {
       model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
-      medium: { type: 'object', additionalProperties: true, description: '培养基：自然名 → lower_bound' },
+      medium: { type: 'object', additionalProperties: true, description: '培养基：可传 {"medium_name": "AB"}（推荐，内置完整 AB 成分含金属）或自然名成分字典 {"D-Glucose": -5, "NH3": -10, ...}' },
       reference_growth: { type: 'number', description: '回归锚：已知野生型生长值（用于 G3 ratio 判定）' },
       phenotype_table: { type: 'string', description: '可选：底物表型 TSV（substrate<TAB>published 0/1）' },
       essential_test: { type: 'array', items: { type: 'string' }, description: '可选：抽检基因 ID 列表' },
@@ -129,7 +129,7 @@ export function registerTools(ctx) {
       '触发词：诊断缺口、为什么不能用这个碳源、gapfind。',
     parameters: {
       model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
-      medium: { type: 'object', additionalProperties: true, description: '培养基：自然名 → lower_bound' },
+      medium: { type: 'object', additionalProperties: true, description: '培养基：可传 {"medium_name": "AB"}（推荐，内置完整 AB 成分含金属）或自然名成分字典 {"D-Glucose": -5, "NH3": -10, ...}' },
       substrates: { type: 'array', items: { type: 'string' }, description: '可选：待检底物名列表（如 Sucrose）' },
     },
     op: 'gapfind',
@@ -144,7 +144,7 @@ export function registerTools(ctx) {
       '触发词：补洞、修复缺口、gapfill、加交换。',
     parameters: {
       model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
-      medium: { type: 'object', additionalProperties: true, description: '培养基（自然名），驱动缺什么补什么' },
+      medium: { type: 'object', additionalProperties: true, description: '培养基：可传 {"medium_name": "AB"/"M9"}（内置完整成分）或自然名成分字典' },
       substrates: { type: 'array', items: { type: 'string' }, description: '可选：要支持的底物名列表' },
       max_add: { type: 'integer', description: '单次最多新增反应数（默认 20）' },
       out: { type: 'string', description: '输出模型路径（缺省 <model>_gf.xml）' },

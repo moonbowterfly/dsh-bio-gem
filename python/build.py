@@ -136,14 +136,15 @@ def build(input_spec, name=None, medium=None, venv=None, out_dir=None, progress_
                          "g3": g3_m9["status"], "growth": g3_m9.get("growth_medium"),
                          "exch": len(med_m9)})
 
-    # 3) 用户目标介质（可选）：resolve -> G3；FAIL 时 L1/L2 规则补洞闭环
+    # 3) 用户目标介质（可选）：preset 展开 + resolve -> G3；FAIL 时 L1/L2 规则补洞闭环
     target = None
     user_rep = None
     if medium:
-        from gapfind import resolve_medium
-        resolved, unresolved = resolve_medium(m1, medium)
-        _log(progress_path, {"event": "target_medium", "resolved": len(resolved),
-                             "unresolved": unresolved})
+        from gapfind import resolve_medium, expand_medium
+        medium_exp, preset_used = expand_medium(medium)
+        resolved, unresolved = resolve_medium(m1, medium_exp)
+        _log(progress_path, {"event": "target_medium", "preset": preset_used,
+                             "resolved": len(resolved), "unresolved": unresolved})
         user_rep = validate_model(out_xml, medium=resolved, reference_growth=None)
         g3_user = user_rep["g3"]
         gapfixes = []

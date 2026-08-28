@@ -40,6 +40,63 @@ CARVE_ALIAS = {
     "glucose": "d-glucose", "ammonia": "ammonium",
 }
 
+# 常用介质预设（自然名成分 -> lb）。agent 只需传 {"medium_name": "AB"} 即可
+# 获得完整成分（金属离子绝不能省——gapseq 生物质方程直接消耗，缺金属生长恒 0）。
+MEDIA_PRESETS = {
+    "AB": {
+        "D-Glucose": -5, "NH3": -10, "O2": -12.5, "CO2": -15, "H+": -20, "H2O": -100,
+        "Phosphate": -10, "Sulfate": -10, "Cl-": -10, "Mn2+": -10, "Zn2+": -10,
+        "Co2+": -10, "Ni2+": -1, "Fe3+": -0.1, "Fe2+": -10, "Ca2+": -10, "Cu2+": -10,
+        "K+": -10, "Mg2+": -10, "Na+": -10,
+    },
+    "M9": {},  # 动态：由 _m9_preset() 从 carveme media_db 提取（BiGG ID 形式）
+}
+
+
+def _m9_preset():
+    """M9 预设：从 carveme media_db.tsv 提取（BiGG compound 名 -> EX_<c>_e，lb -10）。
+    找不到 carveme 时回退常用 M9 成分（BiGG ID 静态表）。"""
+    import csv
+    home = os.path.expanduser("~")
+    db = os.path.join(home, ".dsh", "dsh-bio-gem", "venv-carveme", "Lib",
+                      "site-packages", "carveme", "data", "input", "media_db.tsv")
+    comps = set()
+    if os.path.exists(db):
+        with open(db, encoding="utf-8") as f:
+            rd = csv.DictReader(f, delimiter="\t")
+            for row in rd:
+                if row.get("medium") == "M9" and row.get("compound"):
+                    comps.add(row["compound"].strip())
+    if comps:
+        return {"EX_" + c + "_e": -10.0 for c in sorted(comps)}
+    return {"EX_glc__D_e": -10.0, "EX_nh4_e": -10.0, "EX_o2_e": -12.5,
+            "EX_pi_e": -10.0, "EX_so4_e": -10.0, "EX_k_e": -10.0,
+            "EX_mg2_e": -10.0, "EX_ca2_e": -10.0, "EX_fe2_e": -10.0,
+            "EX_fe3_e": -0.1, "EX_mn2_e": -10.0, "EX_zn2_e": -10.0,
+            "EX_cobalt2_e": -10.0, "EX_ni2_e": -10.0, "EX_cu2_e": -10.0,
+            "EX_cl_e": -10.0, "EX_na1_e": -10.0, "EX_h2o_e": -100.0,
+            "EX_h_e": -20.0, "EX_co2_e": -15.0}
+
+
+def expand_medium(medium):
+    """medium 展开：支持 {"medium_name": "AB", ...覆盖成分}；M9 动态提取。
+    返回 (merged_dict, preset_name_or_None)。"""
+    if not medium:
+        return medium or {}, None
+    med = dict(medium)
+    name = med.pop("medium_name", None)
+    merged = {}
+    if name:
+        if name in MEDIA_PRESETS:
+            preset = MEDIA_PRESETS[name]
+            if name == "M9" and not preset:
+                preset = _m9_preset()
+            merged.update(preset)
+        else:
+            pass  # 未知预设：保留用户成分，调用方可记 unresolved
+    merged.update(med)
+    return merged, name
+
 
 def norm(s):
     return "".join(ch for ch in (s or "").strip().lower() if ch.isalnum() or ch in "+-")
@@ -138,7 +195,8 @@ def find_gaps(model_path, medium=None, substrates=None):
     met_idx = build_met_index(m)
     L1, L2, L3 = [], [], []
 
-    # 跨引擎介质归一化：自然名 -> 目标模型的 EX ID
+    # medium 预设展开（支持 {"medium_name": "AB"|"M9"}）+ 跨引擎介质归一化
+    medium, preset_name = expand_medium(medium)
     resolved_med, unresolved_names = resolve_medium(m, medium)
 
     # ---- L1: 缺交换 ----
