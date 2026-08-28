@@ -31,21 +31,24 @@ def _carve_exe(venv=None):
     return exe
 
 
-def resolve_input(input_spec, progress_path=None):
-    """输入归一化为 protein.faa 路径。
-    支持: *.faa/*.fasta 蛋白序列；CDS 核苷酸(*.fna/.fasta)提示用蛋白；GFF 需配套给出蛋白。
-    """
+def resolve_input(input_spec, progress_path=None, engine="carveme"):
+    """输入归一化。
+    engine=carveme: *.faa（蛋白）；engine=gapseq: *.fna（核苷酸）——gapseq 吃 DNA。
+    accession 下载二期待支持。"""
     if not input_spec:
         raise ValueError("input required (protein.faa / accession / local files)")
     if input_spec.lower().startswith(("gcf_", "gca_")):
         raise NotImplementedError(
-            "accession 下载二期待支持：请先用 datasets CLI 或 NCBI 下载 protein.faa，再传入本地路径")
+            "accession 下载二期待支持：请先用 datasets CLI 或 NCBI 下载蛋白/基因组，再传入本地路径")
     p = input_spec
     low = p.lower()
+    if engine == "gapseq":
+        if low.endswith((".fna", ".fasta", ".fa", ".fna.gz", ".fasta.gz")):
+            return p
+        raise ValueError(f"gapseq 引擎需要核苷酸 fasta（.fna/.fasta）：{p}")
     if low.endswith((".faa", ".fasta", ".fa", ".faa.gz", ".fasta.gz")):
-        # 粗略检查是否为蛋白（首行 > 后首个氨基酸不是 ATGC 开头）
         return p
-    raise ValueError(f"unsupported input type: {p}（首版请提供 protein.faa）")
+    raise ValueError(f"unsupported input type: {p}（carveme 请提供 protein.faa；gapseq 请提供 genomic.fna）")
 
 
 def run_carve(proteins, out_xml, venv=None, progress_path=None, timeout=3600, gapfill_medium="M9"):
@@ -104,13 +107,19 @@ def _media_db_exchanges(m, medium_name="M9", default_lb=-10.0):
     return out or _active_medium(m)
 
 
-def build(input_spec, name=None, medium=None, venv=None, out_dir=None, progress_path=None):
-    """主入口：输入 -> carve(M9 gapfill) -> validate G1-G3(M9 介质) ->
-    若用户给了目标介质：resolve 后 G3 -> L1/L2 gapfill 闭环 -> 模型卡。"""
+def build(input_spec, name=None, medium=None, venv=None, out_dir=None, progress_path=None,
+          engine="carveme"):
+    """主入口。engine:
+      carveme（默认）: protein.faa -> carve(M9 gapfill) -> validate M9 -> 目标介质闭环
+      gapseq（M2）  : genomic.fna -> WSL2 gapseq doall（30-60min，需探测 OK）-> 模型 -> 目标介质验证
+    """
     if progress_path is None:
         progress_path = os.path.join(tempfile.gettempdir(), "gem_build.progress.jsonl")
-    _log(progress_path, {"event": "build_start", "input": input_spec})
-    proteins = resolve_input(input_spec, progress_path)
+    _log(progress_path, {"event": "build_start", "input": input_spec, "engine": engine})
+    if engine == "gapseq":
+        return _build_gapseq(input_spec, name=name, medium=medium, out_dir=out_dir,
+                             progress_path=progress_path)
+    proteins = resolve_input(input_spec, progress_path, engine="carveme")
     name = name or os.path.splitext(os.path.basename(proteins))[0]
     out_dir = out_dir or MODEL_ROOT
     os.makedirs(out_dir, exist_ok=True)
@@ -193,6 +202,86 @@ def build(input_spec, name=None, medium=None, venv=None, out_dir=None, progress_
             "elapsed_s": dt}
 
 
+def _build_gapseq(input_fna, name=None, medium=None, out_dir=None, progress_path=None):
+    """gapseq 引擎：WSL2 桥 doall（30-60min）→ 模型拷回 → 目标介质验证闭环 → 模型卡。"""
+    from gapseq_wsl import probe, run_gapseq
+    from silentio import silent_read_sbml
+    from validate import validate_model
+    from gapfind import expand_medium, resolve_medium
+
+    _log(progress_path, {"event": "gapseq_probe"})
+    p = probe()
+    if not p.get("capable"):
+        _log(progress_path, {"event": "gapseq_unavailable", "level": p.get("level"),
+                             "detail": (p.get("detail") or "")[:300]})
+        raise RuntimeError(
+            f"gapseq 引擎不可用（level={p.get('level')}）：{(p.get('detail') or '')[:300]}。"
+            "请先配置 WSL2 + gapseq 环境，或改用 carveme 引擎。")
+
+    input_fna = resolve_input(input_fna, progress_path, engine="gapseq")
+    name = name or os.path.splitext(os.path.basename(input_fna))[0]
+    out_dir = out_dir or MODEL_ROOT
+    os.makedirs(out_dir, exist_ok=True)
+    _log(progress_path, {"event": "gapseq_start", "note": "doall 30-60min，后台等待不误判超时"})
+    st = time.time()
+    model = None
+    try:
+        model, log_tail = run_gapseq(input_fna, out_dir, name=name,
+                                     progress=(lambda ev: _log(progress_path, ev)))
+    except Exception as e:
+        _log(progress_path, {"event": "gapseq_fail", "err": str(e)[:300]})
+        raise
+    dt = round(time.time() - st, 1)
+    _log(progress_path, {"event": "gapseq_done", "model": model, "s": dt})
+
+    # 目标介质验证（gapseq 模型用 AB 自然名/用户 medium；无 medium 时 M9 兜底）
+    target = None
+    med_exp, preset_used = expand_medium(medium) if medium else ({}, None)
+    if medium:
+        m1 = silent_read_sbml(model)
+        resolved, unresolved = resolve_medium(m1, med_exp)
+        rep = validate_model(model, medium=resolved, reference_growth=None)
+        g3 = rep["g3"]
+        gapfixes = []
+        if g3["status"] == "FAIL" and resolved:
+            _log(progress_path, {"event": "gapseq_gapfill_start"})
+            from gapfill import apply_fixes
+            gf = apply_fixes(model, medium=resolved, max_add=20,
+                             out=model[:-4] + "_gf.xml")
+            gapfixes = gf.get("applied", [])
+            if gapfixes:
+                model = gf["out"]
+                rep = validate_model(model, medium=resolved, reference_growth=None)
+                g3 = rep["g3"]
+            _log(progress_path, {"event": "gapseq_gapfill_done", "applied": len(gapfixes),
+                                 "g3_after": g3["status"]})
+        target = {"medium": medium, "preset": preset_used, "g3": g3["status"],
+                  "growth": g3.get("growth_medium"), "unresolved": unresolved,
+                  "gapfixes_applied": len(gapfixes)}
+    else:
+        _log(progress_path, {"event": "gapseq_no_medium"})
+        rep = None
+
+    card = {
+        "name": name, "engine": "gapseq", "engine_version": p.get("gapseq_version"),
+        "gapseq_probe": p.get("level"),
+        "started": datetime.datetime.now().isoformat(timespec="seconds"),
+        "elapsed_s": dt, "model": model,
+        "validations": {k: rep[k]["status"] for k in ("g1", "g2", "g3")} if rep else None,
+        "growth_g3": rep["g3"].get("growth_medium") if rep else None,
+        "target": target,
+        "mapping": {"genome_input": input_fna},
+    }
+    card_path = os.path.join(out_dir, name + ".card.json")
+    with open(card_path, "w", encoding="utf-8") as f:
+        json.dump(card, f, ensure_ascii=False, indent=2)
+    _log(progress_path, {"event": "build_done", "model": model, "card": card_path, "s": dt})
+    return {"model": model, "card": card_path,
+            "validations": card["validations"], "growth_g3": card["growth_g3"],
+            "target": target or {"note": "no target medium provided"},
+            "engine": "gapseq", "elapsed_s": dt}
+
+
 def _carve_version(venv=None):
     try:
         venv = venv or DEFAULT_CARVE_VENV
@@ -210,6 +299,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--input", required=True)
     ap.add_argument("--name")
+    ap.add_argument("--engine", default="carveme", choices=["carveme", "gapseq"])
     ap.add_argument("--medium-json")
     ap.add_argument("--out-dir")
     ap.add_argument("--progress")
@@ -217,7 +307,7 @@ if __name__ == "__main__":
     medium = json.loads(a.medium_json) if a.medium_json else None
     try:
         res = build(a.input, name=a.name, medium=medium, out_dir=a.out_dir,
-                    progress_path=a.progress)
+                    progress_path=a.progress, engine=a.engine)
         print(json.dumps({"ok": True, "result": res}, ensure_ascii=False))
     except Exception as e:
         import traceback

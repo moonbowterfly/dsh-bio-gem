@@ -39,25 +39,27 @@ function buildTool() {
   return defineTool({
     name: 'gem_build',
     description:
-      '从细菌全基因组（蛋白 FASTA 或本地文件）构建基因组尺度代谢模型（GEM）。' +
-      '流程：CarveMe 引擎（-g M9 gapfill）→ 精确 M9 介质验证（G1-G3）→ 若给 target_medium（自然名成分如 D-Glucose/NH3/O2）则解析并验证目标介质，' +
-      '失败时自动执行 L1/L2 规则补洞（缺交换/转运），L3 内部路径缺口诚实报告。' +
+      '从细菌全基因组构建基因组尺度代谢模型（GEM）。' +
+      'engine=carveme（默认，纯 Windows 快）：输入蛋白 FASTA（*.faa），CarveMe -g M9 gapfill → M9 介质验证 → 目标介质 L1/L2 补洞，' +
+      '约 1-2 分钟（C58 实测 70s）。' +
+      'engine=gapseq（质量档，需本机 WSL2 gapseq 环境）：输入核苷酸 FASTA（*.fna），WSL 桥 gapseq doall → 模型拷回 → 目标介质验证，' +
+      '约 30-60 分钟（后台进度日志旁观，不要误判超时）。' +
       '输出标准 SBML（fbc v2）+ 模型卡（sidecar JSON：引擎版本/验证结果/补洞记录）。' +
-      '耗时约 1-2 分钟（C58 实测 70s），请等待完成，不要误判为超时。' +
-      '触发词：构建代谢模型、基因组转模型、建GSMM、carveme 建模。',
+      '触发词：构建代谢模型、基因组转模型、建GSMM、carveme 建模、gapseq 建模。',
     parameters: {
       input: {
         type: 'string', required: true,
-        description: '蛋白 FASTA 绝对路径（*.faa，NCBI protein.faa 或翻译产物）。accession 下载二期待支持。',
+        description: '输入绝对路径：engine=carveme 用蛋白 FASTA（*.faa）；engine=gapseq 用核苷酸 FASTA（*.fna）。',
       },
       name: { type: 'string', description: '模型命名（如 C58），缺省用文件名' },
+      engine: { type: 'string', enum: ['carveme', 'gapseq'], description: '构建引擎：carveme（默认，纯 Windows 快出稿）或 gapseq（WSL2，质量档 30-60min）' },
       out_dir: { type: 'string', description: '输出目录，缺省 ~/.dsh/dsh-bio-gem/models' },
       target_medium: {
         type: 'object', additionalProperties: true,
         description: '目标培养基：可传 {"medium_name": "AB"/"M9"}（内置完整成分）或自然名成分字典 {"D-Glucose": -5, "NH3": -10, ...}。跨引擎自动解析。',
       },
     },
-    timeoutMs: 900_000,
+    timeoutMs: 3_600_000,
     output: {
       schema: { type: 'object', additionalProperties: true },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
@@ -67,11 +69,12 @@ function buildTool() {
       const job = startBuild({
         input: args.input,
         name: args.name,
+        engine: args.engine,
         medium: args.target_medium,
         outDir: args.out_dir,
       })
       // 轮询进度直到 done（build.py 内部已写 result.json）
-      const deadline = Date.now() + 840_000
+      const deadline = Date.now() + 3_540_000
       while (Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 2000))
         const st = jobStatus(job.jobId)

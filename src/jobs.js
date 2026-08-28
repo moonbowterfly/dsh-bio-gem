@@ -29,7 +29,7 @@ export function pythonExe() {
 
 const jobs = new Map() // jobId -> {cp, jobDir, ...}
 
-export function startBuild({ input, name, medium, outDir }) {
+export function startBuild({ input, name, engine, medium, outDir }) {
   const jobId = 'gem_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
   const jobDir = path.join(JOBS_DIR, jobId)
   fs.mkdirSync(jobDir, { recursive: true })
@@ -40,6 +40,7 @@ export function startBuild({ input, name, medium, outDir }) {
   const py = pythonExe()
   const args = ['-u', path.join(PYTHON_DIR, 'build.py'),
     '--input', input, '--progress', progressFile]
+  if (engine) args.push('--engine', engine)
   if (name) args.push('--name', name)
   if (medium) args.push('--medium-json', JSON.stringify(medium))
   if (outDir) args.push('--out-dir', outDir)
