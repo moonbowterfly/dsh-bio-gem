@@ -98,8 +98,14 @@ def probe():
 # ---------------------------------------------------------------------------
 def launch_gapseq(input_fna, name="model", work_win=None):
     """拷贝输入 + 构造 doall 脚本（base64 防引号）+ nohup/setsid 后台启动（立即返回）。
-    返回 {launched, work_win, wsl_work, name}。"""
+    单实例保护：已有 running 任务时拒绝重复 launch（返回 launched:false + reason）。
+    返回 {launched, work_win, wsl_work, name, reason?}。"""
     import base64
+    # 协议层单实例保护：正在运行则拒绝
+    st = status_gapseq()
+    if st["state"] == "running":
+        return {"launched": False, "reason": "已有 doall 在运行（state=running），先 action=status 等待完成，不要重复 launch",
+                "work_win": work_win, "wsl_work": WSL_WORK, "name": name}
     work_dir = work_win or os.path.join(os.path.expanduser("~"), ".dsh", "dsh-bio-gem", "models")
     os.makedirs(work_dir, exist_ok=True)
     if not os.path.exists(input_fna):
@@ -109,12 +115,16 @@ def launch_gapseq(input_fna, name="model", work_win=None):
 
     script = (
         "#!/bin/bash\n"
+        # 残留 blastp 清理（blastp 不会出现在本脚本命令行里，pkill 无自伤风险；
+        # doall 相关进程不在此清——靠协议层 running 保护防重复启动）
+        "pkill -9 -f blastp 2>/dev/null; sleep 1\n"
         f"mkdir -p {WSL_WORK} && rm -f {WSL_WORK}/*\n"
         f"cp '{src}' {WSL_WORK}/{name}.fna || {{ echo 'COPY_FAIL' > {WSL_WORK}/doall.rc; exit 1; }}\n"
         f"cd {WSL_WORK}\n"
         f"source {CONDA_SH}\n"
         f"conda activate {GAPSEQ_ENV}\n"
-        # doall: 位置参数输入；默认 auto 介质 + 当前目录输出（-m/-f 组合实测触发 usage）
+        # doall 只吃位置参数（实测 -m/-f/-D 任何 option 组合都会触发 usage——doall.sh getopts 有坑）；
+        # 默认介质 auto + 默认序列库目录（envs/gapseq/share/gapseq/dat/seq/Bacteria 已完整部署 1.1GB）
         f"gapseq doall {name}.fna > doall.log 2>&1\n"
         "echo $? > doall.rc\n"
     )
@@ -132,15 +142,26 @@ def launch_gapseq(input_fna, name="model", work_win=None):
 
 
 def status_gapseq():
-    """查 doall 状态：哨兵 doall.rc / 日志尾部。
-    返回 {state: running|done|failed|unknown, rc, log_tail, hint}。"""
-    rc, out, err = wsl_run(
-        f"test -f {WSL_WORK}/doall.rc && cat {WSL_WORK}/doall.rc || echo RUNNING", 60)
-    running = "RUNNING" in out
+    """查 doall 状态：先看进程（blastp/gapseq_find 在跑 = running），再看哨兵 doall.rc。
+    返回 {state: idle|running|done|failed|unknown, rc, log_tail, hint}。"""
     log_tail = _tail_wsl(WSL_WORK, 40)
-    if running:
+    # 1) 真实进程存在性
+    _r, proc_out, _e = wsl_run(
+        "ps aux | grep -E 'blastp|gapseq_find' | grep -v grep | wc -l", 30)
+    try:
+        proc_n = int((proc_out.strip() or "0").split()[0])
+    except (ValueError, IndexError):
+        proc_n = -1
+    # 2) 哨兵
+    _r, out, _e = wsl_run(
+        f"test -f {WSL_WORK}/doall.rc && cat {WSL_WORK}/doall.rc || echo NONE", 30)
+    has_sentinel = "NONE" not in out
+    if proc_n > 0 and not has_sentinel:
         return {"state": "running", "rc": None, "log_tail": log_tail,
                 "note": "doall 运行中（30-60min），2-5 分钟后再查"}
+    if proc_n == 0 and not has_sentinel:
+        return {"state": "idle", "rc": None, "log_tail": log_tail,
+                "note": "无运行任务，可 action=launch 启动"}
     try:
         rc_val = int(out.strip().split()[-1])
     except (ValueError, IndexError):
