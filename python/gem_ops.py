@@ -104,11 +104,40 @@ def op_validate(args):
 
 
 # ---------------------------------------------------------------------------
+# op: gapfind — 缺口分级诊断（L1/L2/L3）
+# ---------------------------------------------------------------------------
+def op_gapfind(args):
+    from gapfind import find_gaps
+    model = args.get("model")
+    if not model or not os.path.exists(model):
+        return {"ok": False, "error": f"model file not found: {model}"}
+    return {"ok": True, "result": find_gaps(model, medium=args.get("medium"),
+                                            substrates=args.get("substrates"))}
+
+
+# ---------------------------------------------------------------------------
+# op: gapfill — 规则级补洞（L1/L2，provenance 打标）
+# ---------------------------------------------------------------------------
+def op_gapfill(args):
+    from gapfill import apply_fixes
+    model = args.get("model")
+    if not model or not os.path.exists(model):
+        return {"ok": False, "error": f"model file not found: {model}"}
+    if not (args.get("medium") or args.get("substrates")):
+        return {"ok": False, "error": "need medium and/or substrates to drive gapfill"}
+    return {"ok": True, "result": apply_fixes(
+        model, medium=args.get("medium"), substrates=args.get("substrates"),
+        max_add=args.get("max_add", 20), out=args.get("out"))}
+
+
+# ---------------------------------------------------------------------------
 # 分发器
 # ---------------------------------------------------------------------------
 OPS = {
     "model_info": op_model_info,
     "validate": op_validate,
+    "gapfind": op_gapfind,
+    "gapfill": op_gapfill,
 }
 
 
