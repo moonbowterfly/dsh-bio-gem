@@ -26,6 +26,9 @@ import traceback
 sys.stdin.reconfigure(encoding="utf-8")
 sys.stdout.reconfigure(encoding="utf-8")
 
+# Python -I isolated 模式下脚本目录不进 sys.path——显式插入以导入同目录模块
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 _MODEL_DIR = os.path.join(os.path.expanduser("~"), ".dsh", "dsh-bio-gem", "models")
 
 
@@ -81,10 +84,31 @@ def op_model_info(args):
 
 
 # ---------------------------------------------------------------------------
+# op: validate — 五道验证关卡（G1-G5）
+# ---------------------------------------------------------------------------
+def op_validate(args):
+    from validate import validate_model
+    model = args.get("model")
+    if not model or not os.path.exists(model):
+        return {"ok": False, "error": f"model file not found: {model}"}
+    rep = validate_model(
+        model,
+        medium=args.get("medium"),
+        phenotype_table=args.get("phenotype_table"),
+        essential_test=args.get("essential_test"),
+        reference_growth=args.get("reference_growth"),
+        reference_essential=args.get("reference_essential"),
+        carbon_mode=args.get("carbon_mode", "supplement"),
+    )
+    return {"ok": True, "result": rep}
+
+
+# ---------------------------------------------------------------------------
 # 分发器
 # ---------------------------------------------------------------------------
 OPS = {
     "model_info": op_model_info,
+    "validate": op_validate,
 }
 
 
