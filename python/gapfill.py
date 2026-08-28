@@ -86,7 +86,7 @@ def apply_fixes(model_path, medium=None, substrates=None, max_add=20, out=None):
                 applied.append({"type": "L1_exchange", "exchange": g["exchange"],
                                 "metabolite_e0": e0.id, "ex_rxn": exr.id if exr else None,
                                 "tx_rxn": txr.id if txr else None})
-        elif g["type"] == "exchange_missing_name":
+        elif g["type"] in ("exchange_missing_name", "exchange_unresolved_name"):
             key = norm(g["substrate"])
             sid = met_idx.get(key)
             if not sid:
