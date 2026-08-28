@@ -12,7 +12,7 @@ Genome-scale metabolic model builder for dsh: genome in, validated SBML out.
 | `gem_validate` | 五道验证关卡 G1-G5（加载/元素平衡/生长真实性/表型(条件)/必需性抽检(条件)）| ✅ |
 | `gem_gapfind` | 缺口分级诊断（L1 缺交换 / L2 缺转运 / L3 内部路径）| ✅ |
 | `gem_gapfill` | 规则级补洞（L1/L2 自动，provenance 打标，防过补四闸门）| ✅ |
-| `gem_build` | CarveMe 基因组→SBML 构建（后台 job + 进度）| 🚧 构建中（C58 实测）|
+| `gem_build` | CarveMe 基因组→SBML 构建（后台 job + 进度；M9 gapfill 闭环 + 目标介质验证）| ✅ C58 实测 70s |
 
 ## 架构
 
@@ -36,6 +36,7 @@ python -I python/gapfill.py payload.json
 
 - `gem_validate` 对 C58.xml：G1 PASS / G2 WARN(仅 bio1 已知边界) / G3 PASS(0.519981) / G4 PASS(17/19) / G5 PASS
 - gapfind→gapfill 闭环：原版 C58.xml + 蔗糖培养基 → 自动补交换/转运 → 蔗糖生长 0.97077（与手工 P1 补洞一致）
+- gem_build 端到端（C58 protein.faa）：carve M9 gapfill 54s → 精确 M9 介质 G3 PASS 0.782 → AB 目标介质 resolve 20/20，G3 FAIL（L3 内部路径，已记录为 CarveMe 已知边界）
 
 ## 许可
 
