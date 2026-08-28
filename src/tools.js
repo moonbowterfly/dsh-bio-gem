@@ -157,6 +157,27 @@ export function registerTools(ctx) {
 
   disposers.push(ctx.tools.register(buildTool()))
 
+  // gem_gapseq：gapseq 引擎原子步骤（agent 编排 setup->launch->status*->fetch）
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_gapseq',
+    description:
+      'gapseq 引擎（WSL2）原子步骤工具——长任务由 agent 按编排推进：\n' +
+      'action=setup：能力探测（wsl/发行版/gapseq 版本/序列库注册）→ capability OK 才能继续。\n' +
+      'action=launch：输入核苷酸 FASTA（*.fna 绝对路径）→ 后台启动 gapseq doall（30-60min），立即返回工作目录；不要等它完成。\n' +
+      'action=status：查 doall 状态 → {state: running|done|failed, log_tail}；running 时 2-5 分钟后再查，可多轮。\n' +
+      'action=fetch：done 后把产物（XML/faa.gz/tbl/日志）拷回 Windows 输出目录 → {model}。\n' +
+      '编排模式：setup → launch →（循环 status 直到 done）→ fetch → 对 model 跑 gem_validate/缺口补洞。' +
+      '失败时（failed/COPY_FAIL）根据 hint 自纠后重试 launch。触发词：gapseq 建模、doall、质量重建。',
+    parameters: {
+      action: { type: 'string', enum: ['setup', 'launch', 'status', 'fetch'], required: true, description: '原子步骤' },
+      input: { type: 'string', description: 'launch 用：核苷酸 .fna 绝对路径' },
+      name: { type: 'string', description: '模型名（产物 basename），缺省 model' },
+      out_dir: { type: 'string', description: '产物输出目录，缺省 ~/.dsh/dsh-bio-gem/models' },
+    },
+    op: 'gapseq',
+    timeoutMs: 180_000,
+  })))
+
   return () => disposers.forEach((d) => d())
 }
 

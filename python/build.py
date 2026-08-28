@@ -41,6 +41,13 @@ def resolve_input(input_spec, progress_path=None, engine="carveme"):
         raise NotImplementedError(
             "accession 下载二期待支持：请先用 datasets CLI 或 NCBI 下载蛋白/基因组，再传入本地路径")
     p = input_spec
+    if not os.path.exists(p):
+        d = os.path.dirname(p)
+        cands = []
+        if os.path.isdir(d):
+            cands = [f for f in os.listdir(d)
+                     if f.lower().endswith((".fna", ".faa", ".fasta", ".fa"))][:6]
+        raise ValueError(f"输入文件不存在: {p}；目录内候选: {cands or '无'}")
     low = p.lower()
     if engine == "gapseq":
         if low.endswith((".fna", ".fasta", ".fa", ".fna.gz", ".fasta.gz")):

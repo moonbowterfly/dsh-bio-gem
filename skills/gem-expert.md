@@ -15,17 +15,23 @@ language: mixed
 | 模型在目标培养基不长，想知道为什么 | `gem_gapfind`（model + medium + substrates）|
 | 按缺口自动补洞（缺交换/转运规则修复）| `gem_gapfill`（model + medium）→ 补完重跑 `gem_validate` |
 | 从细菌基因组（蛋白 FASTA）构建模型 | `gem_build`（input + 可选 target_medium）|
+| gapseq 质量重建（需 WSL2）| `gem_gapseq`：setup → launch →（循环 status 直到 done）→ fetch，agent 编排 |
 | 需要跑 FBA/必需性/生产包络线分析 | 用 dsh-bio-genie 的 `bio_fba` / `bio_gene_knockout` / `bio_production_envelope` 等（模型文件直接用）|
 
 ## 推荐工作流
 
 ```
 基因组（蛋白 FASTA）
-  └─ gem_build ──► SBML + 模型卡（内置 M9 介质验证 G1-G3；target_medium 可选）
+  └─ gem_build(engine=carveme) ──► SBML + 模型卡（内置 M9 介质验证 G1-G3；target_medium 可选）
         ├─ 通过 → gem_report 看概要 / gem_validate 全检 / 交给 bio_fba 等分析
         └─ 目标介质 FAIL → gem_gapfind 分级诊断
               ├─ L1 缺交换 / L2 缺转运 → gem_gapfill 自动补 → 重验
               └─ L3 内部路径 → 诚实报告（需文献反应，不自动补）
+
+基因组（核苷酸 .fna，质量档）
+  └─ gem_gapseq 原子编排：setup（探测）→ launch（后台 doall，30-60min 不等）→
+     status 循环（2-5min/次，running 时不要干等可并行处理其他）→ fetch（产物拷回）
+     → gem_validate / gem_gapfind / gem_gapfill 继续质量闭环
 ```
 
 ## 硬规则（实测，违反会拿错结果）

@@ -131,6 +131,28 @@ def op_gapfill(args):
 
 
 # ---------------------------------------------------------------------------
+# op: gapseq — 原子步骤（setup/launch/status/fetch），agent 编排长任务
+# ---------------------------------------------------------------------------
+def op_gapseq(args):
+    from gapseq_wsl import probe, launch_gapseq, status_gapseq, fetch_gapseq
+    action = args.get("action", "setup")
+    if action == "setup":
+        return {"ok": True, "result": probe()}
+    if action == "launch":
+        if not args.get("input"):
+            return {"ok": False, "error": "launch 需要 input（核苷酸 .fna 绝对路径）"}
+        r = launch_gapseq(args["input"], name=args.get("name", "model"),
+                          work_win=args.get("out_dir"))
+        return {"ok": True, "result": r}
+    if action == "status":
+        return {"ok": True, "result": status_gapseq()}
+    if action == "fetch":
+        r = fetch_gapseq(args.get("out_dir"), name=args.get("name", "model"))
+        return {"ok": True, "result": r}
+    return {"ok": False, "error": f"unknown gapseq action: {action}（setup|launch|status|fetch）"}
+
+
+# ---------------------------------------------------------------------------
 # 分发器
 # ---------------------------------------------------------------------------
 OPS = {
@@ -138,6 +160,7 @@ OPS = {
     "validate": op_validate,
     "gapfind": op_gapfind,
     "gapfill": op_gapfill,
+    "gapseq": op_gapseq,
 }
 
 
