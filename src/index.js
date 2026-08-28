@@ -1,8 +1,17 @@
-// dsh-bio-gem 插件入口（M1）
-// 导出: tools = 语义化工具定义（gemTools）；jobs = 后台长任务管理
-// TODO(接入 dsh-tools 时): 按 @deepseek-ai/dsh-tools 插件注册协议把 tools 注册进宿主，
-//   gem_build 的 executor 用 jobs.startBuild() + jobStatus() 实现异步进度。
-const { gemTools } = require('./tools');
-const jobs = require('./jobs');
+// dsh-bio-gem — Cordis 插件主模块
+// 注入 tools（5 语义化工具：gem_report/validate/gapfind/gapfill/build）。
+import { registerTools } from './tools.js'
 
-module.exports = { tools: gemTools, jobs, name: 'dsh-bio-gem' };
+/** Cordis 插件名（cordis.patch.yml row id 同名）。 */
+export const name = 'dsh-bio-gem'
+
+/** 需要的服务。M1 只注册工具（无浏览器半/无自带 skill/无 server 路由）。 */
+export const inject = ['tools']
+
+/**
+ * 装配插件。
+ * @param {import('@deepseek-ai/cordis').Context} ctx
+ */
+export function apply(ctx) {
+  registerTools(ctx)
+}

@@ -1,94 +1,160 @@
-// dsh-bio-gem 工具注册表（M1 语义化工具 · 2026-08-29 定稿）
-// 结构同族 dsh-bio-genie/src/tools.js：name/description/inputSchema/dual_use
-// 实现状态：model_info 已通（gem_report 底层）；validate/gapfind/gapfill/build 挂 TODO（骨架）
+// dsh-bio-gem — 工具层（defineTool 注册，5 语义化工具，M1）
+// 全部执行走 python/gem_ops.py（JSON stdin 协议）；gem_build 走 build.py 长任务。
+import { defineTool } from '@deepseek-ai/dsh-tools'
+import { join } from 'node:path'
+import { dirname, isAbsolute } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { spawn } from 'node:child_process'
+import { callGem, pythonExe, PYTHON_DIR } from './python.js'
+import { startBuild, jobStatus } from './jobs.js'
 
-const gemTools = [
-  {
-    name: "gem_report",
-    description:
-      "读取一个 SBML 代谢模型文件，输出模型摘要：基因/反应/代谢物数、区室、复制子分布（多染色体/质粒统计）、交换反应数。用于快速检查模型文件是否可加载、规模多大、是否多复制子。如果模型文件不存在或不是有效 SBML，会明确报错。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        model: { type: "string", description: "SBML 文件的绝对路径（.xml）" }
-      },
-      required: ["model"],
-      additionalProperties: true
-    },
-    dual_use: { category: "read", desc: "读取模型元数据" },
-    impl: "todo"
-  },
-  {
-    name: "gem_validate",
-    description:
-      "对 SBML 代谢模型执行五道验证关卡：G1 加载统计（基因/反应/代谢物 + 多复制子 locus_tag 唯一性 + GPR 覆盖）、G2 内部反应元素平衡（排除 EX/DM/SK/boundary；C/N/P/S 必须为 0，H/charge 单独报告）、G3 生长真实性（声明培养基上有碳源>0、无碳源=0、全关=0）、G4 底物表型对照（需提供参照表，条件执行）、G5 必需基因抽检（需参照必需基因集，条件执行，默认抽 ≤30 基因）。输出每关 PASS/WARN/FAIL 与证据值。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        model: { type: "string", description: "SBML 文件绝对路径" },
-        medium: { type: "object", description: "培养基交换 ID -> lower_bound 字典（如 {\"EX_cpd00027_e0\": -5}），缺省用内置默认" },
-        phenotype_table: { type: "string", description: "可选：底物表型参照表路径（G4 用）" },
-        essential_test: { type: "array", items: { type: "string" }, description: "可选：抽检基因 ID 列表（G5 用，默认取内置参考集前 30）" }
-      },
-      required: ["model"],
-      additionalProperties: true
-    },
-    dual_use: { category: "analysis", desc: "模型质量验证" },
-    impl: "todo"
-  },
-  {
-    name: "gem_gapfind",
-    description:
-      "代谢模型缺口分级诊断：L1 检查培养基中已声明成分是否缺少对应胞外交换反应（集合差）；L2 检查胞外/胞内区室连通性（缺转运反应）；L3 检查内部路径缺失（某底物无法进入中心代谢）。输出分级缺口清单，每条含证据（缺失的交换 ID 或断开的代谢物）。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        model: { type: "string", description: "SBML 文件绝对路径" },
-        medium: { type: "object", description: "培养基定义（交换 ID -> lower_bound）" },
-        substrates: { type: "array", items: { type: "string" }, description: "可选：待检底物名列表；缺省用培养基成分" }
-      },
-      required: ["model"],
-      additionalProperties: true
-    },
-    dual_use: { category: "analysis", desc: "缺口诊断" },
-    impl: "todo"
-  },
-  {
-    name: "gem_gapfill",
-    description:
-      "按 gapfind 的分级结果自动补洞：L1 补胞外交换（EX_ 反应）、L2 补转运反应（e0→c0）、L3 内部路径（需人工/文献反应，M1 为可选）。每条新增反应打 provenance 标记（来源、原因、是否借自模板），修改前自动备份原模型文件为 .bak。补洞后应重跑 gem_validate 确认生长恢复。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        model: { type: "string", description: "SBML 文件绝对路径" },
-        medium: { type: "object", description: "培养基定义（交换 ID -> lower_bound）" },
-        fixes: { type: "array", items: { type: "object" }, description: "可选：仅应用指定修复；缺省应用全部自动可修复项" },
-        max_add: { type: "integer", description: "单次最多新增反应数（防过补，默认 20）" }
-      },
-      required: ["model"],
-      additionalProperties: true
-    },
-    dual_use: { category: "write", desc: "模型补洞（修改副本）" },
-    impl: "todo"
-  },
-  {
-    name: "gem_build",
-    description:
-      "从细菌全基因组构建代谢模型（长任务，后台执行+进度回报）：输入 NCBI accession（如 GCF_000092025.1）或本地基因组（genomic.fna + genomic.gff 或 protein.faa），经 CarveMe 引擎重建 → 自动补洞闭环 → 输出标准 SBML（fbc v2）+ 模型卡（sidecar JSON：引擎、版本、库版本、命令行、验证结果、补洞记录）。产出模型自动存入 ~/.dsh/dsh-bio-gem/models/ 并可由 gem_report/gem_validate 消费。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        input: { type: "string", description: "NCBI accession（GCF_/GCA_）或本地基因组文件路径（.fna/.gff/.faa）" },
-        name: { type: "string", description: "模型命名（如 C58），缺省用 accession 或文件名" },
-        medium: { type: "object", description: "可选：目标培养基，构建后自动验证生长" },
-        engine: { type: "string", enum: ["carveme", "gapseq", "auto"], description: "构建引擎；auto=CarveMe 快出稿，可选 gapseq 增强（M2）" }
-      },
-      required: ["input"],
-      additionalProperties: true
-    },
-    dual_use: { category: "write", desc: "构建模型（长任务）" },
-    impl: "todo"
-  }
-];
+const PY = pythonExe()
 
-module.exports = { gemTools };
+/** 校验输入存在（绝对路径或用户给定路径）。 */
+function requirePath(v, label) {
+  if (!v) throw new Error(`${label} required`)
+  if (!isAbsolute(v)) throw new Error(`${label} 必须是绝对路径: ${v}`)
+  return v
+}
+
+/** gem_ops 通用工具工厂（同步 op：report/validate/gapfind/gapfill）。 */
+function gemTool(opts) {
+  return defineTool({
+    name: opts.name,
+    description: opts.description,
+    parameters: opts.parameters,
+    timeoutMs: opts.timeoutMs ?? 300_000,
+    output: {
+      schema: { type: 'object', additionalProperties: true },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+    },
+    async execute(args) {
+      return callGem(opts.op, args, { timeoutMs: opts.timeoutMs ?? 300_000 })
+    },
+  })
+}
+
+/** gem_build：spawn build.py（可 60-120s），await 完成返回 {model, card, ...}。 */
+function buildTool() {
+  return defineTool({
+    name: 'gem_build',
+    description:
+      '从细菌全基因组（蛋白 FASTA 或本地文件）构建基因组尺度代谢模型（GEM）。' +
+      '流程：CarveMe 引擎（-g M9 gapfill）→ 精确 M9 介质验证（G1-G3）→ 若给 target_medium（自然名成分如 D-Glucose/NH3/O2）则解析并验证目标介质，' +
+      '失败时自动执行 L1/L2 规则补洞（缺交换/转运），L3 内部路径缺口诚实报告。' +
+      '输出标准 SBML（fbc v2）+ 模型卡（sidecar JSON：引擎版本/验证结果/补洞记录）。' +
+      '耗时约 1-2 分钟（C58 实测 70s），请等待完成，不要误判为超时。' +
+      '触发词：构建代谢模型、基因组转模型、建GSMM、carveme 建模。',
+    parameters: {
+      input: {
+        type: 'string', required: true,
+        description: '蛋白 FASTA 绝对路径（*.faa，NCBI protein.faa 或翻译产物）。accession 下载二期待支持。',
+      },
+      name: { type: 'string', description: '模型命名（如 C58），缺省用文件名' },
+      out_dir: { type: 'string', description: '输出目录，缺省 ~/.dsh/dsh-bio-gem/models' },
+      target_medium: {
+        type: 'object', additionalProperties: true,
+        description: '目标培养基（自然名 → lower_bound，如 {"D-Glucose": -5, "NH3": -10, "O2": -12.5}）。跨引擎自动解析（gapseq/BiGG 命名均可）。',
+      },
+    },
+    timeoutMs: 900_000,
+    output: {
+      schema: { type: 'object', additionalProperties: true },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+    },
+    async execute(args) {
+      requirePath(args.input, 'input')
+      const job = startBuild({
+        input: args.input,
+        name: args.name,
+        medium: args.target_medium,
+        outDir: args.out_dir,
+      })
+      // 轮询进度直到 done（build.py 内部已写 result.json）
+      const deadline = Date.now() + 840_000
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2000))
+        const st = jobStatus(job.jobId)
+        if (st.done) {
+          if (st.error) throw new Error(`gem_build failed: ${st.error}`)
+          if (!st.result || st.result.ok === false) {
+            throw new Error(`gem_build failed: ${st.result?.error_hint ?? 'result missing'}`)
+          }
+          return st.result.result
+        }
+      }
+      throw new Error('gem_build timeout (840s)')
+    },
+  })
+}
+
+export function registerTools(ctx) {
+  const disposers = []
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_report',
+    description:
+      '读取 SBML 代谢模型文件，输出模型摘要：基因/反应/代谢物/区室/复制子分布（多质粒/多染色体分离统计）、交换数。' +
+      '用于快速检查模型文件是否可加载、规模、是否为多复制子。模型文件不存在或非有效 SBML 会明确报错。' +
+      '触发词：看模型信息、模型摘要、有多少基因。',
+    parameters: { model: { type: 'string', required: true, description: 'SBML 文件绝对路径' } },
+    op: 'model_info',
+  })))
+
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_validate',
+    description:
+      '对 SBML 代谢模型执行五道验证关卡：G1 加载统计（+多复制子 ID 检查 + GPR 覆盖）、' +
+      'G2 内部反应元素平衡（C/N/P/S 必须为 0，H/O 单独报告）、G3 生长真实性（声明培养基上有碳源>0、无碳=0、全关=0）、' +
+      'G4 底物表型对照（需 phenotype_table 路径，条件执行）、G5 必需基因抽检（需 essential_test 基因列表，条件执行）。' +
+      'medium 用自然名成分（如 D-Glucose/NH3/O2），跨引擎自动解析。G2 的已知生物质方程簿记偏差（如 bio1）报 WARN 不阻塞。' +
+      '触发词：验证模型、质量检查、五道关卡。',
+    parameters: {
+      model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
+      medium: { type: 'object', additionalProperties: true, description: '培养基：自然名 → lower_bound' },
+      reference_growth: { type: 'number', description: '回归锚：已知野生型生长值（用于 G3 ratio 判定）' },
+      phenotype_table: { type: 'string', description: '可选：底物表型 TSV（substrate<TAB>published 0/1）' },
+      essential_test: { type: 'array', items: { type: 'string' }, description: '可选：抽检基因 ID 列表' },
+      carbon_mode: { type: 'string', enum: ['supplement', 'sole'], description: 'G4 语义（默认 supplement=基准+底物）' },
+    },
+    op: 'validate',
+    timeoutMs: 300_000,
+  })))
+
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_gapfind',
+    description:
+      '代谢模型缺口分级诊断：L1 缺胞外交换（培养基成分无对应 EX）、L2 缺转运（e0 代谢物无入胞出口）、' +
+      'L3 内部路径（有交换+转运但 FBA 不生长）。输出分级缺口清单 + 每条是否规则可修（fixable）。' +
+      '已知规律：多数「不能利用某碳源」缺口是 L1/L2 而非 L3。medium 支持自然名（跨引擎解析）。' +
+      '触发词：诊断缺口、为什么不能用这个碳源、gapfind。',
+    parameters: {
+      model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
+      medium: { type: 'object', additionalProperties: true, description: '培养基：自然名 → lower_bound' },
+      substrates: { type: 'array', items: { type: 'string' }, description: '可选：待检底物名列表（如 Sucrose）' },
+    },
+    op: 'gapfind',
+  })))
+
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_gapfill',
+    description:
+      '按 gapfind 分级结果自动补洞：L1 补胞外交换（EX_ 反应 + 胞外代谢物）、L2 补转运（e0→c0，GPR 留空标注）。' +
+      '每条新增反应打 provenance 标记（source=gem-gapfill + 原因）；max_add 封顶防过补；out 缺省生成 <model>_gf.xml（原文件不覆盖，' +
+      '就地覆盖才备份 .bak）。L3 内部路径不自动补（需文献反应）。补洞后建议重跑 gem_validate 确认生长恢复。' +
+      '触发词：补洞、修复缺口、gapfill、加交换。',
+    parameters: {
+      model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
+      medium: { type: 'object', additionalProperties: true, description: '培养基（自然名），驱动缺什么补什么' },
+      substrates: { type: 'array', items: { type: 'string' }, description: '可选：要支持的底物名列表' },
+      max_add: { type: 'integer', description: '单次最多新增反应数（默认 20）' },
+      out: { type: 'string', description: '输出模型路径（缺省 <model>_gf.xml）' },
+    },
+    op: 'gapfill',
+  })))
+
+  disposers.push(ctx.tools.register(buildTool()))
+
+  return () => disposers.forEach((d) => d())
+}
+
+export const gemToolNames = ['gem_report', 'gem_validate', 'gem_gapfind', 'gem_gapfill', 'gem_build']

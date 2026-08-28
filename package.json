@@ -1,14 +1,33 @@
 {
   "name": "dsh-bio-gem",
   "version": "0.1.0",
-  "description": "基因组尺度代谢模型（GEM）构建插件：输入细菌全基因组，自动构建、验证、补洞、出报告（SBML）| Genome-scale metabolic model builder for dsh: genome in, validated SBML out",
-  "keywords": ["dsh", "plugin", "metabolic-model", "GEM", "SBML", "carveme", "gapseq", "cobra", "bioinformatics"],
+  "description": "基因组尺度代谢模型（GEM）构建插件：输入细菌全基因组（蛋白FASTA，支持多质粒/多染色体），自动构建+验证+补洞+出报告（SBML + 模型卡），供 dsh-bio-genie 消费工具加载使用 | Genome-scale metabolic model builder for dsh",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "src/**/*.js",
+    "python/**/*.py",
+    "docs/**/*.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": ["dsh", "deepseek-harness", "dsh-plugin", "metabolic-model", "GEM", "SBML", "carveme", "cobra", "bioinformatics"],
   "license": "MIT",
-  "main": "src/index.js",
-  "files": ["src/", "python/", "preset/", "lib/", "docs/", "README.md"],
+  "engines": { "node": "^22.19 || >=24" },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
   "scripts": {
-    "test": "node test/smoke.js",
-    "bench": "node test/bench.js"
+    "smoke": "node test/smoke.js"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-tools": "*"
