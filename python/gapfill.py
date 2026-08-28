@@ -55,10 +55,11 @@ def _add_tx_rxn(m, e0_id, c0_id, tag):
 
 
 def apply_fixes(model_path, medium=None, substrates=None, max_add=20, out=None):
+    from silentio import silent_read_sbml, silent_write_sbml
     if not (medium or substrates):
         return {"error": "nothing to fix: provide medium and/or substrates"}
     gaps = find_gaps(model_path, medium=medium, substrates=substrates)
-    m = cobra.io.read_sbml_model(model_path)
+    m = silent_read_sbml(model_path)
     ex_idx = build_ex_index(m)
     met_idx = build_met_index(m)
     applied, skipped = [], []
@@ -133,7 +134,7 @@ def apply_fixes(model_path, medium=None, substrates=None, max_add=20, out=None):
         backup = model_path + ".bak"
         if not os.path.exists(backup):
             shutil.copy2(model_path, backup)
-    cobra.io.write_sbml_model(m, out_path)
+    silent_write_sbml(m, out_path)
     return {"applied": applied, "skipped": skipped, "gaps": {
         "L1": len(gaps["L1"]), "L2": len(gaps["L2"]), "L3": len(gaps["L3"])},
         "out": out_path, "backup": backup, "fixed_rxns": len(applied)}

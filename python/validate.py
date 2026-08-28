@@ -5,7 +5,11 @@
 import re
 import os
 import json
+import sys
 import cobra
+
+# Python -I isolated 模式下脚本目录不进 sys.path——显式插入以导入同目录模块
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 EX_PREFIX = ("EX_", "DM_", "SK_")
 CORE_ELEMS = ("C", "N", "P", "S")   # 硬核：不平衡必须 = 0
@@ -39,8 +43,9 @@ def _rxn_elem_balance(rxn):
 
 class Validator:
     def __init__(self, model_path):
+        from silentio import silent_read_sbml
         self.path = model_path
-        self.m = cobra.io.read_sbml_model(model_path)
+        self.m = silent_read_sbml(model_path)
 
     # ------------------------------------------------------------------ G1
     def g1_load(self):
@@ -143,9 +148,12 @@ class Validator:
         ratio = None
         if reference_growth and reference_growth > 0:
             ratio = wt / reference_growth
-        status = "PASS" if (ok_grow and ok_noc and ok_closed and
-                            (ratio is None or ratio >= 0.99)) else \
-                 ("WARN" if not ok_grow and medium else "FAIL")
+        if not medium:
+            status = "WARN"  # 无声明培养基 -> 无法验证
+        elif ok_grow and ok_noc and ok_closed and (ratio is None or ratio >= 0.99):
+            status = "PASS"
+        else:
+            status = "FAIL"  # 有培养基但生长不达标（或对照泄漏）——构建侧必须走补洞闭环
         rep = {
             "status": status,
             "medium_provided": bool(medium),
@@ -277,18 +285,22 @@ class Validator:
     # ------------------------------------------------------------------ run
     def run(self, medium=None, phenotype_table=None, essential_test=None,
             reference_growth=None, reference_essential=None, carbon_mode="supplement"):
+        from gapfind import resolve_medium
+        resolved_med, unresolved = resolve_medium(self.m, medium) if medium else ({}, [])
         report = {"model": self.path,
                   "g1": self.g1_load(),
                   "g2": self.g2_balance()}
-        g3 = self.g3_growth(medium, reference_growth)
+        g3 = self.g3_growth(resolved_med, reference_growth)
+        if unresolved:
+            g3["medium_unresolved"] = unresolved
         report["g3"] = g3
         if phenotype_table:
-            report["g4"] = self.g4_phenotype(table_path=phenotype_table, medium=medium,
+            report["g4"] = self.g4_phenotype(table_path=phenotype_table, medium=resolved_med,
                                              carbon_mode=carbon_mode)
         else:
             report["g4"] = {"status": "SKIP", "reason": "no phenotype reference provided"}
         if essential_test:
-            report["g5"] = self.g5_essentiality(essential_test, medium, reference_essential)
+            report["g5"] = self.g5_essentiality(essential_test, resolved_med, reference_essential)
         else:
             report["g5"] = {"status": "SKIP", "reason": "no essential_test provided"}
         # 总判定：G1/G2/G3 全 PASS（或 SKIP 默认）+ 其余不阻塞

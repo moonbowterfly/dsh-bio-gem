@@ -3,7 +3,11 @@
 # 用法: find_gaps(model, medium=None, substrates=None) -> {"L1": [...], "L2": [...], "L3": [...]}
 import os
 import re
+import sys
 import cobra
+
+# Python -I isolated 模式下脚本目录不进 sys.path——显式插入以导入同目录模块
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 EX_PREFIX = ("EX_", "DM_", "SK_")
 
@@ -23,6 +27,17 @@ SYN = {
     "sn-glycerol 3-phosphate": "glycerol-3-phosphate",
     "malic acid": "l-malate", "gluconate": "d-gluconate",
     "glucose 1-phosphate": "glucose-1-phosphate", "glumate": "l-glutamate",
+}
+
+# CarveMe/BiGG 风格别名（跨引擎：gapseq 缩写 -> BiGG 全名；用于 resolve_medium）
+CARVE_ALIAS = {
+    "ca2+": "calcium", "k+": "potassium", "mg2+": "magnesium", "na+": "sodium",
+    "mn2+": "manganese", "zn2+": "zinc", "ni2+": "nickel", "cu2+": "copper",
+    "cl-": "chloride", "nh3": "ammonium", "nh4+": "ammonium", "ammonium": "ammonium",
+    "o2": "o2", "h2o": "h2o", "co2": "co2", "cobalt": "co2+", "co2+": "co2+",
+    "fe2+": "fe2+", "fe3+": "fe3+", "h+": "h+", "h": "h+",
+    "d-glucose": "d-glucose", "phosphate": "phosphate", "sulfate": "sulfate",
+    "glucose": "d-glucose", "ammonia": "ammonium",
 }
 
 
@@ -58,17 +73,41 @@ def build_ex_index(m):
 
 
 def match_ex(sub, ex_idx):
-    """底物名 -> EX id；别名表 + 子串回退。"""
+    """底物名 -> EX id；三层：精确(含 SYN 别名) -> CARVE_ALIAS -> 子串回退。"""
     key = norm(sub)
     if key in ex_idx:
         return ex_idx[key]
     s = SYN.get((sub or "").strip().lower())
     if s and norm(s) in ex_idx:
         return ex_idx[norm(s)]
+    a = CARVE_ALIAS.get(key)
+    if a:
+        if a in ex_idx:
+            return ex_idx[a]
+        for n, rid in ex_idx.items():
+            if a and (a in n or n in a):
+                return rid
     for n, rid in ex_idx.items():
         if key and (key in n or n in key):
             return rid
     return None
+
+
+def resolve_medium(m, medium):
+    """介质字典 -> {EX_id: lb}。键可为 EX ID（直接用）或自然名/别名（跨引擎匹配）。
+    返回 (resolved, unresolved_names)。"""
+    ex_idx = build_ex_index(m)
+    resolved, unresolved = {}, []
+    for k, lb in (medium or {}).items():
+        if k.startswith("EX_") and k in m.reactions:
+            resolved[k] = lb
+            continue
+        exid = match_ex(k, ex_idx)
+        if exid:
+            resolved[exid] = lb
+        else:
+            unresolved.append(k)
+    return resolved, unresolved
 
 
 def _met_has_outlets(m, met_id):
@@ -93,20 +132,30 @@ def _growth_with(m, medium, extra_ex, lb=-10.0):
 
 
 def find_gaps(model_path, medium=None, substrates=None):
-    m = cobra.io.read_sbml_model(model_path)
+    from silentio import silent_read_sbml
+    m = silent_read_sbml(model_path)
     ex_idx = build_ex_index(m)
     met_idx = build_met_index(m)
     L1, L2, L3 = [], [], []
 
+    # 跨引擎介质归一化：自然名 -> 目标模型的 EX ID
+    resolved_med, unresolved_names = resolve_medium(m, medium)
+
     # ---- L1: 缺交换 ----
-    # (a) 培养基声明但模型没有的交换反应 ID
+    # (a) 用户显式声明的 EX ID 模型没有
     for rid, lb in (medium or {}).items():
-        if rid not in m.reactions:
+        if rid.startswith("EX_") and rid not in m.reactions:
             L1.append({
                 "type": "exchange_missing",
                 "exchange": rid, "medium_lb": lb,
                 "fixable": "yes" if _mids_exist(m, rid) else "no",
             })
+    # (a2) 自然名匹配不到任何交换
+    for nm in unresolved_names:
+        L1.append({
+            "type": "exchange_unresolved_name", "substrate": nm,
+            "fixable": "yes" if _c0_exists(m, nm, met_idx) else "no",
+        })
     # (b) 底物名匹配不到 EX（模型无对应交换）
     for sub in (substrates or []):
         exid = match_ex(sub, ex_idx)
@@ -115,10 +164,9 @@ def find_gaps(model_path, medium=None, substrates=None):
                 "type": "exchange_missing_name", "substrate": sub,
                 "fixable": "yes" if _c0_exists(m, sub, met_idx) else "no",
             })
-    # (c) 培养基已声明的交换：检查已被 L1 覆盖的同名底物
     # ---- L2: 缺转运（e0 代谢物无非 EX 出口）----
     cand_e0 = set()
-    for rid, lb in (medium or {}).items():
+    for rid, lb in resolved_med.items():
         if rid.startswith("EX_") and rid in m.reactions:
             for x in m.reactions.get_by_id(rid).metabolites:
                 if x.compartment == "e0":
@@ -144,13 +192,14 @@ def find_gaps(model_path, medium=None, substrates=None):
         exid = match_ex(sub, ex_idx)
         if not exid or exid not in m.reactions:
             continue  # L1 已报
-        g = _growth_with(m, medium, exid)
+        g = _growth_with(m, resolved_med, exid)
         if g < 1e-6:
             L3.append({"type": "internal_path", "substrate": sub,
                        "exchange": exid, "growth": round(g, 6),
                        "note": "需要文献反应或人工审核（M1 不自动补）"})
 
-    return {"L1": L1, "L2": L2, "L3": L3}
+    return {"L1": L1, "L2": L2, "L3": L3,
+            "medium_unresolved": unresolved_names}
 
 
 def _mids_exist(m, ex_id):

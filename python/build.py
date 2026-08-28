@@ -10,6 +10,9 @@ import tempfile
 import time
 import datetime
 
+# Python -I isolated 模式下脚本目录不进 sys.path——显式插入以导入同目录模块
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 DEFAULT_CARVE_VENV = os.path.join(os.path.expanduser("~"), ".dsh", "dsh-bio-gem", "venv-carveme")
 MODEL_ROOT = os.path.join(os.path.expanduser("~"), ".dsh", "dsh-bio-gem", "models")
 
@@ -45,12 +48,16 @@ def resolve_input(input_spec, progress_path=None):
     raise ValueError(f"unsupported input type: {p}（首版请提供 protein.faa）")
 
 
-def run_carve(proteins, out_xml, venv=None, progress_path=None, timeout=3600):
+def run_carve(proteins, out_xml, venv=None, progress_path=None, timeout=3600, gapfill_medium="M9"):
     exe = _carve_exe(venv)
-    cmd = [exe, "--input", proteins, "--output", out_xml, "--gapfill", "universal"]
+    cmd = [exe, proteins, "-o", out_xml, "-g", gapfill_medium]
     _log(progress_path, {"event": "carve_start", "cmd": " ".join(cmd)})
     st = time.time()
     env = dict(os.environ)
+    # carve 从 PATH 找 diamond（Windows venv 不激活时 Scripts 不在 PATH）——显式注入
+    script_dir = os.path.join(venv or DEFAULT_CARVE_VENV, "Scripts")
+    if script_dir and script_dir not in env.get("PATH", ""):
+        env["PATH"] = script_dir + os.pathsep + env.get("PATH", "")
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
                            env=env, encoding="utf-8", errors="replace")
@@ -60,14 +67,46 @@ def run_carve(proteins, out_xml, venv=None, progress_path=None, timeout=3600):
     dt = time.time() - st
     if r.returncode != 0:
         _log(progress_path, {"event": "carve_fail", "rc": r.returncode,
-                             "stderr_tail": (r.stderr or "")[-800:]})
+                             "stderr_tail": (r.stderr or "")[-800:],
+                             "stdout_tail": (r.stdout or "")[-400:]})
         raise RuntimeError(f"carve failed rc={r.returncode}: {(r.stderr or '')[-800:]}")
-    _log(progress_path, {"event": "carve_done", "s": round(dt, 1)})
+    _log(progress_path, {"event": "carve_done", "s": round(dt, 1),
+                         "stdout_tail": (r.stdout or "")[-300:]})
     return out_xml
 
 
+def _active_medium(m):
+    """模型当前打开的交换 -> {EX_id: lb}（carve gapfill 实际设置的介质，可溯源）。
+    注意：CarveMe 默认把所有 EX 设成开放(-1000)，故全开交换数≠真介质成分；
+    精确介质请用 _media_db_exchanges()。"""
+    return {r.id: r.lower_bound for r in m.reactions
+            if r.id.startswith("EX_") and r.lower_bound < 0}
+
+
+def _media_db_exchanges(m, medium_name="M9", default_lb=-10.0):
+    """从 carveme 自带 media_db.tsv 提取介质成分 -> 模型 EX 交换字典（精确介质）。"""
+    import csv
+    db = os.path.join(DEFAULT_CARVE_VENV, "Lib", "site-packages", "carveme",
+                      "data", "input", "media_db.tsv")
+    if not os.path.exists(db):
+        return _active_medium(m)  # 退化：全部开放交换
+    comps = set()
+    with open(db, encoding="utf-8") as f:
+        rd = csv.DictReader(f, delimiter="\t")
+        for row in rd:
+            if row.get("medium") == medium_name and row.get("compound"):
+                comps.add(row["compound"].strip())
+    out = {}
+    for c in sorted(comps):
+        exid = "EX_" + c + "_e"
+        if exid in m.reactions:
+            out[exid] = default_lb
+    return out or _active_medium(m)
+
+
 def build(input_spec, name=None, medium=None, venv=None, out_dir=None, progress_path=None):
-    """主入口：输入 -> carve -> validate -> gapfill 闭环 -> 模型卡。"""
+    """主入口：输入 -> carve(M9 gapfill) -> validate G1-G3(M9 介质) ->
+    若用户给了目标介质：resolve 后 G3 -> L1/L2 gapfill 闭环 -> 模型卡。"""
     if progress_path is None:
         progress_path = os.path.join(tempfile.gettempdir(), "gem_build.progress.jsonl")
     _log(progress_path, {"event": "build_start", "input": input_spec})
@@ -77,50 +116,79 @@ def build(input_spec, name=None, medium=None, venv=None, out_dir=None, progress_
     os.makedirs(out_dir, exist_ok=True)
     out_xml = os.path.join(out_dir, name + ".xml")
 
-    # 1) carve
+    # 1) carve（自带 M9 gapfill，CarveMe 原生最小培养基）
     st = time.time()
     if not (os.path.exists(out_xml) and os.path.getmtime(out_xml) > os.path.getmtime(proteins)):
-        run_carve(proteins, out_xml, venv=venv, progress_path=progress_path)
+        run_carve(proteins, out_xml, venv=venv, progress_path=progress_path,
+                  gapfill_medium="M9")
     else:
         _log(progress_path, {"event": "carve_skip_cached"})
-    # 2) validate G1-G3
+
+    from silentio import silent_read_sbml
+    m1 = silent_read_sbml(out_xml)
+    med_m9 = _media_db_exchanges(m1, "M9")  # 精确 M9 成分（非全开近似）
+
+    # 2) validate G1-G3：M9 介质（构建产物实测）
     from validate import validate_model
-    rep = validate_model(out_xml, medium=medium, reference_growth=None)
-    g3 = rep["g3"]
-    _log(progress_path, {"event": "validate", "overall": rep["overall"],
-                         "g3": g3["status"], "growth": g3.get("growth_medium")})
-    # 3) gapfill 闭环（G3 失败且给了 medium）
-    gapfixes = []
-    if g3["status"] == "FAIL" and medium:
-        _log(progress_path, {"event": "gapfill_start"})
-        from gapfill import apply_fixes
-        gf = apply_fixes(out_xml, medium=medium, max_add=20,
-                         out=out_xml[:-4] + "_gf.xml")
-        gapfixes = gf.get("applied", [])
-        if gapfixes:
-            rep = validate_model(gf["out"], medium=medium, reference_growth=None)
-            out_xml = gf["out"]
-            _log(progress_path, {"event": "gapfill_done", "applied": len(gapfixes),
-                                 "g3_after": rep["g3"]["status"],
-                                 "growth_after": rep["g3"].get("growth_medium")})
+    rep_m9 = validate_model(out_xml, medium=med_m9, reference_growth=None)
+    g3_m9 = rep_m9["g3"]
+    _log(progress_path, {"event": "validate_m9", "overall": rep_m9["overall"],
+                         "g3": g3_m9["status"], "growth": g3_m9.get("growth_medium"),
+                         "exch": len(med_m9)})
+
+    # 3) 用户目标介质（可选）：resolve -> G3；FAIL 时 L1/L2 规则补洞闭环
+    target = None
+    user_rep = None
+    if medium:
+        from gapfind import resolve_medium
+        resolved, unresolved = resolve_medium(m1, medium)
+        _log(progress_path, {"event": "target_medium", "resolved": len(resolved),
+                             "unresolved": unresolved})
+        user_rep = validate_model(out_xml, medium=resolved, reference_growth=None)
+        g3_user = user_rep["g3"]
+        gapfixes = []
+        if g3_user["status"] == "FAIL" and resolved:
+            _log(progress_path, {"event": "gapfill_start"})
+            from gapfill import apply_fixes
+            gf = apply_fixes(out_xml, medium=resolved, max_add=20,
+                             out=out_xml[:-4] + "_gf.xml")
+            gapfixes = gf.get("applied", [])
+            if gapfixes:
+                user_rep = validate_model(gf["out"], medium=resolved, reference_growth=None)
+                out_xml = gf["out"]
+                g3_user = user_rep["g3"]
+                _log(progress_path, {"event": "gapfill_done", "applied": len(gapfixes),
+                                     "g3_after": g3_user["status"],
+                                     "growth_after": g3_user.get("growth_medium")})
+        target = {
+            "medium": medium, "resolved_exchanges": len(resolved),
+            "unresolved": unresolved,
+            "g3": user_rep["g3"]["status"],
+            "growth": user_rep["g3"].get("growth_medium"),
+            "gapfixes_applied": len(gapfixes if 'gapfixes' in dir() else []),
+        }
+        # 若 M9 已 PASS 而用户介质 FAIL：诚实保留（模型可用介质=M9）
     dt = round(time.time() - st, 1)
     # 4) 模型卡
     card = {
         "name": name, "engine": "carveme", "engine_version": _carve_version(venv),
-        "carve_cmd": "carve --input ... --output ... --gapfill",
+        "carve_cmd": "carve INPUT -o OUT -g M9",
         "started": datetime.datetime.now().isoformat(timespec="seconds"),
         "elapsed_s": dt, "model": out_xml,
-        "validations": {k: rep[k]["status"] for k in ("g1", "g2", "g3")},
-        "growth_g3": rep["g3"].get("growth_medium"),
-        "gapfixes": gapfixes, "medium": medium,
+        "validations_m9": {k: rep_m9[k]["status"] for k in ("g1", "g2", "g3")},
+        "growth_g3_m9": g3_m9.get("growth_medium"),
+        "m9_exchanges": len(med_m9),
+        "target": target,
         "mapping": {"protein_input": proteins},
     }
     card_path = os.path.join(out_dir, name + ".card.json")
     with open(card_path, "w", encoding="utf-8") as f:
         json.dump(card, f, ensure_ascii=False, indent=2)
     _log(progress_path, {"event": "build_done", "model": out_xml, "card": card_path, "s": dt})
-    return {"model": out_xml, "card": card_path, "validations": card["validations"],
-            "growth_g3": card["growth_g3"], "gapfixes_applied": len(gapfixes),
+    return {"model": out_xml, "card": card_path,
+            "validations_m9": card["validations_m9"],
+            "growth_g3_m9": card["growth_g3_m9"],
+            "target": target or {"note": "no target medium provided"},
             "elapsed_s": dt}
 
 
