@@ -1,0 +1,81 @@
+# dsh-bio-gem — 架构文档（M1 定稿 2026-08-29）
+
+## 1. 定位一句话
+
+dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质粒/多染色体），自动构建→验证→补洞→出报告（标准 SBML + 模型卡），产出后可被 dsh-bio-genie 现有消费工具（FBA/必需性/生产包络线/模型面板）直接加载使用。
+
+硬性原则（沿袭 bio-genie）：**用户零手动安装、零自愈、通用化（不可本机特化）、结论可溯源**。
+
+## 2. 决策记录（为什么这么设计）
+
+| 日期 | 决策 | 依据 |
+|---|---|---|
+| 08-28 | 插件名 dsh-bio-gem；资产盘点：消费侧已就绪、补构建侧闭环 | 用户拍板 |
+| 08-29 | 引擎路线：**任务门槛路由**（不是简单 auto）；落地节奏 **M1 CarveMe+补洞 → M2 gapseq WSL 桥 → M3 双引擎交叉** | 第三方 GLM 独立评估 + 本机实测（CarveMe AB 不生长=补洞是生存线；WSL 桥显著降级交付风险；Docker 非 WSL 替代）|
+| 08-29 | MVP 工具集：gem_build / gem_validate（G1G2G3 必做，G4 条件、G5 抽检）/ gem_gapfind（L1L2L3）/ gem_gapfill（L1L2 规则自动）/ gem_report（薄版模型卡）；**gem_essentiality 不进首版** | 消费侧 bio_gene_knockout 已存在，避免重复实现 |
+| 08-29 | 修正 GLM 建议：弃 μ 判据用 FBA 通量判据；pyrodigal 注释前端降 backlog；测试矩阵首版收敛 C58+2 公开株 | 本机输出口径为 objective_value；默认输入是带注释基因组 |
+
+**裁决原则**：GLM 分析质量高但缺本机上下文（输出单位、输入形态、部署面=本机为主的现实），凡冲突处以本机实测与产品原则为准。
+
+## 3. 工具契约（5 语义化工具 ↔ Python op）
+
+| 工具 | Python op | 阶段 |
+|---|---|---|
+| gem_build | build（CarveMe 封装）| M1 TODO |
+| gem_validate | validate（G1-G5）| M1 TODO |
+| gem_gapfind | gapfind（L1-L3 分级）| M1 TODO |
+| gem_gapfill | gapfill（L1/L2 规则 + provenance）| M1 TODO |
+| gem_report | model_info ✅（已通 08-29）| M1 DONE |
+
+## 4. 引擎路线（M1→M2→M3）
+
+- **M1（当前）**：CarveMe 纯 Windows（独立 venv 安装，不外挂 bio-genie python-env）。构建流程：输入（acession/本地 GFF+fna/protein.faa）→ 注释处理 → carve --gapfill → 生长冒烟（G3）→ 若失败走 gapfind/gapfill 闭环 → 模型卡。
+- **M2**：gapseq WSL2 桥（本机已就绪）+ **能力探测矩阵**（wsl 存在/虚拟化/发行版）→ 不可用显式降级 Tier2，不静默；分发时采用**私有发行版**（wsl --import 自包含 bundle：R+gapseq+序列库 v1.5+哈希校验，版本钉死）。任务分步化（draft/build/transport/fill/adjust 每步落盘 → 断点续跑）。
+- **M3**：双引擎交叉验证，产出**分歧清单**（两引擎不一致反应/基因 = 低置信区，需文献/实验校验）而非平均；可选集成 gemsembler（先验证成熟度）；所有比对按**反应级等价类**而非基因级（引擎 GPR 粒度不同）。
+
+## 5. 五道验证关卡规格（HANDOFF-03 产品化）
+
+| 关卡 | 内容 | 首版 | 判定线 |
+|---|---|---|---|
+| G1 | 加载统计 + 多复制子 locus_tag 唯一性 + GPR 覆盖 | ✅ | 可加载；无重复 ID；GPR 覆盖率报告 |
+| G2 | 内部反应元素平衡（EX/DM/SK/boundary 排除）| ✅ | C/N/P/S 不平衡=0（FAIL/WARN），H/charge 单独报告；公式覆盖率先报 |
+| G3 | 生长真实性（声明培养基）| ✅ | 有碳源 objective_value>0；无碳 <1e-6；全关=0；与参照值比值≥99% 判 PASS |
+| G4 | 底物表型对照 | 条件 | 有参照表才跑（内置 C58 39 底物作回归锚），不设阻塞阈值 |
+| G5 | 必需基因抽检（≤30 基因）| 条件 | 有参照集才跑；映射覆盖 <80% 时 SKIP(WARN) |
+
+关卡 fail-fast 排序 G1→G3→G2（便宜的先行）；gem_validate 保持**无状态**，同 run 可双跑（补洞前后 diff 写进模型卡）。
+
+**判据口径**：FBA objective_value（mmol/gDW/h），不用 μ（h⁻¹）——模型输出单位即通量；C58 回归锚：gapseq AB=0.519981；补洞后 CarveMe 目标 ≥0.1 为软目标。
+
+## 6. 缺口分级（gapfind/gapfill）
+
+- **L1 缺交换**：培养基成分表 vs 模型 EX_ 列表的集合差 → 修复=补 EX_ 反应（完善环境定义，最安全）
+- **L2 缺转运**：e0↔c0 区室连通性（代谢物在胞外存在但无转运反应入胞）→ 修复=补转运（GPR 可空，标注未表征）
+- **L3 内部路径**：底物有交换+转运却无法达中心代谢 → 需文献反应（M1 报告清单，不自动补）
+
+已知规律（P1 实测）：多数"不能利用某碳源"缺口是 L1/L2 而非 L3。
+
+**防过补四闸门**：分级规则优先于 MILP（M1 不做 MILP）；新增反应数封顶（max_add=20）；逐条 provenance 打标（来源/原因/是否借自模板）；修复后强制重验 G3 + 生长值合理性上限告警（>1.0 时 WARN 过补嫌疑）。
+
+## 7. 模型卡（sidecar JSON，与 SBML 同目录同名 .card.json）
+
+```
+{ engine, engine_version, db_version, command, started, finished,
+  memote_like: {g1..g5}, gapfixes: [{type, reaction, reason, source}],
+  growth: {medium, before, after}, mapping_coverage,
+  replicons, warnings }
+```
+写盘用 cobra.io.write_sbml_model（cobra 0.32.1 无 Model.save_model——坑位记档）。
+
+## 8. 后台任务（M1 基建，约 30% 工程量）
+
+job 化 + 进度事件（粒度 ≤5s）+ 分步 checkpoint（每步落盘，可断点续跑）+ 结果可重入。引擎无关，M2 gapseq 直接复用。
+
+## 9. 与 bio-genie 衔接
+
+- 产出 SBML 落 `~/.dsh/dsh-bio-gem/models/<name>.xml`；模型卡同目录；
+- bio-genie 模型面板/消费工具读取同一模型库（路径注册另议：复用 dsh-bio-genie 的 /metabolic-models 上传入口或直接注册目录）。
+
+## 10. 验收（M1 最小可用判定线）
+
+零手动干预下：**基因组进 → 四个消费工具（FBA/必需性/包络线/面板）不经修改即可用的 SBML 出**，且模型在声明培养基上生长为正；C58 端到端演示通过（build→面板可见→FBA 可跑→必需性可跑）；模型卡齐全（引擎/版本/补洞记录/验证结果，同输入重跑一致）；5-6 Mb 基因组 p95 ≤ 20 min。
