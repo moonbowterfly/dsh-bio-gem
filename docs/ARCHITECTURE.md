@@ -30,7 +30,7 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 ## 4. 引擎路线（M1→M2→M3）
 
 - **M1（已完成 08-29，C58 实测）**：CarveMe 纯 Windows（独立 venv ~/.dsh/dsh-bio-gem/venv-carveme + diamond PATH 注入）。输入（protein.faa）→ carve -g M9（54s）→ 精确 M9 介质（media_db 提取）G3 PASS（C58 测 0.782）→ 用户目标介质 resolve（跨引擎自然名）→ G3 FAIL 时 L1/L2 规则补洞 → 模型卡。**CarveMe 模型实测：M9 可生长；AB 目标介质 FAIL 且为 L3 内部路径（L1/L2 规则不可修）——诚实报告为已知边界（研究设计既有结论：CarveMe M9 补洞局限）。**
-- **M2**：gapseq WSL2 桥（本机已就绪）+ **能力探测矩阵**（wsl 存在/虚拟化/发行版）→ 不可用显式降级 Tier2，不静默；分发时采用**私有发行版**（wsl --import 自包含 bundle：R+gapseq+序列库 v1.5+哈希校验，版本钉死）。任务分步化（draft/build/transport/fill/adjust 每步落盘 → 断点续跑）。
+- **M2（2026-08-29 代码完成，doall 实测进行中）**：gapseq WSL2 桥（`python/gapseq_wsl.py`）。能力探测四件套（wsl/发行版/gapseq 版本/序列库注册 up-to-date——防假已装 UniProt 灾难）；新版 wsl.exe 输出 UTF-8（旧版 UTF-16LE，双解码兼容）；doall 哨兵文件轮询（30-60min，每 2min 进度 + 日志尾部旁观）；产物拷回 → 目标介质验证（AB 自然名）→ L1/L2 补洞闭环 → 模型卡。gem_build `engine` 参数（carveme|gapseq）+ 60min 超时。分发时采用**私有发行版**（wsl --import 自包含 bundle：R+gapseq+序列库 v1.5+哈希校验，版本钉死）。任务分步化（draft/build/transport/fill/adjust 每步落盘 → 断点续跑）待做。
 - **M3**：双引擎交叉验证，产出**分歧清单**（两引擎不一致反应/基因 = 低置信区，需文献/实验校验）而非平均；可选集成 gemsembler（先验证成熟度）；所有比对按**反应级等价类**而非基因级（引擎 GPR 粒度不同）。
 
 ## 5. 五道验证关卡规格（HANDOFF-03 产品化）

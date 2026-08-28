@@ -12,7 +12,7 @@ Genome-scale metabolic model builder for dsh: genome in, validated SBML out.
 | `gem_validate` | 五道验证关卡 G1-G5（加载/元素平衡/生长真实性/表型(条件)/必需性抽检(条件)）| ✅ |
 | `gem_gapfind` | 缺口分级诊断（L1 缺交换 / L2 缺转运 / L3 内部路径）| ✅ |
 | `gem_gapfill` | 规则级补洞（L1/L2 自动，provenance 打标，防过补四闸门）| ✅ |
-| `gem_build` | CarveMe 基因组→SBML 构建（后台 job + 进度；M9 gapfill 闭环 + 目标介质验证）| ✅ C58 实测 70s |
+| `gem_build` | CarveMe/gapseq 双引擎基因组→SBML 构建（后台 job + 进度；M9 或目标介质验证闭环）| ✅ carveme 70s / gapseq 实测中 |
 
 ## 架构
 
