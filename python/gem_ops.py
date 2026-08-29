@@ -191,6 +191,26 @@ def op_annotate(args):
 
 
 # ---------------------------------------------------------------------------
+# op: media_resolve — 跨引擎介质解析 RPC（genie 消费侧统一走此；防介质语义漂移）
+# ---------------------------------------------------------------------------
+def op_media_resolve(args):
+    from gapfind import expand_medium, resolve_medium
+    from silentio import silent_read_sbml
+    model = args.get("model")
+    if not model or not os.path.exists(model):
+        return {"ok": False, "error": f"model file not found: {model}"}
+    m = silent_read_sbml(model)
+    med, preset = expand_medium(args.get("medium"))
+    resolved, unresolved = resolve_medium(m, med)
+    return {"ok": True, "result": {
+        "resolved_exchanges": sorted(resolved),
+        "medium_preset": preset,
+        "unresolved": unresolved,
+        "model": model,
+    }}
+
+
+# ---------------------------------------------------------------------------
 # 分发器
 # ---------------------------------------------------------------------------
 OPS = {
@@ -202,6 +222,7 @@ OPS = {
     "phenotype_fix": op_phenotype_fix,
     "essential_scan": op_essential_scan,
     "annotate": op_annotate,
+    "media_resolve": op_media_resolve,
 }
 
 

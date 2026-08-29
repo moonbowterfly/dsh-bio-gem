@@ -192,7 +192,21 @@ def build(input_spec, name=None, medium=None, venv=None, out_dir=None, progress_
         }
         # 若 M9 已 PASS 而用户介质 FAIL：诚实保留（模型可用介质=M9）
     dt = round(time.time() - st, 1)
-    # 4) 模型卡
+    # 4) 模型卡（schema v2 起步：supported_mediums 由验证结果得出）
+    supported = [
+        {"medium_name": "M9", "ex_reactions": sorted(med_m9),
+         "growth_rate": g3_m9.get("growth_medium"), "units": "mmol/gDW/h",
+         "validation_status": "verified_G3" if g3_m9.get("status") == "PASS" else "unverified"},
+    ]
+    if target and target.get("g3") == "PASS":
+        tname = "custom"
+        if isinstance(medium, dict):
+            tname = medium.get("medium_name") or "custom"
+        supported.append({
+            "medium_name": tname, "ex_reactions": target.get("resolved_exchanges"),
+            "growth_rate": target.get("growth"), "units": "mmol/gDW/h",
+            "validation_status": "verified_G3_G4" if target.get("gapfixes_applied", 0) == 0 else "verified_G3_only",
+        })
     card = {
         "name": name, "engine": "carveme", "engine_version": _carve_version(venv),
         "carve_cmd": "carve INPUT -o OUT -g M9",
@@ -202,6 +216,7 @@ def build(input_spec, name=None, medium=None, venv=None, out_dir=None, progress_
         "growth_g3_m9": g3_m9.get("growth_medium"),
         "m9_exchanges": len(med_m9),
         "target": target,
+        "supported_mediums": supported,
         "mapping": {"protein_input": proteins},
     }
     card_path = os.path.join(out_dir, name + ".card.json")

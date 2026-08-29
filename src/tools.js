@@ -230,6 +230,22 @@ export function registerTools(ctx) {
     timeoutMs: 300_000,
   })))
 
+  // gem_media_resolve：跨引擎介质解析 RPC（genie 消费侧统一入口；防介质语义漂移三次假象重演）
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_media_resolve',
+    description:
+      '把自然名培养基（如 {"medium_name": "AB"} 或 {"D-Glucose": -5, "NH3": -10, ...}）解析到指定模型的实际交换反应（EX ID 列表）。' +
+      '这是全插件统一的介质解析入口——任何消费方（包括 dsh-bio-genie 的 FBA 等）应通过本工具/同款解析层获得交换 ID，' +
+      '不要自行实现介质名匹配（已因三次"模型不生长假象"加固）。返回 {resolved_exchanges, unresolved, medium_preset}。' +
+      '触发词：介质解析、培养基转交换、media resolve。',
+    parameters: {
+      model: { type: 'string', required: true, description: '目标模型 SBML 绝对路径' },
+      medium: { type: 'object', additionalProperties: true, description: '自然名培养基（medium_name 或成分字典）' },
+    },
+    op: 'media_resolve',
+    timeoutMs: 120_000,
+  })))
+
   return () => disposers.forEach((d) => d())
 }
 
