@@ -1,6 +1,6 @@
-// dsh-bio-gem — 工具层（defineTool 注册，11 语义化工具，2026-08-29）
+// dsh-bio-gem — 工具层（defineTool 注册，13 语义化工具，2026-08-30 阶段A-M1 起）
 // 全部执行走 python/gem_ops.py（JSON stdin 协议）或 build.py CLI（gem_build 长任务）。
-// op 与工具对照：10 op（含 l3_fix）+ build CLI；详见 docs/ARCHITECTURE.md §3。
+// op 与工具对照：12 op（含 l3_fix/fluxscan）+ build CLI；详见 docs/ARCHITECTURE.md §3。
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { join } from 'node:path'
 import { dirname, isAbsolute } from 'node:path'
@@ -309,9 +309,38 @@ export function registerTools(ctx) {
     },
   })))
 
+  // gem_fluxscan：通量区间制（阶段A-M1：FVA 区间 + pFBA 点值 + 条件对区间分离判定）
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_fluxscan',
+    description:
+      '通量区间制（fluxscan）：对同一模型在多个培养条件下做全模型 FVA（区间）+ pFBA（点值），' +
+      '每反应输出 fva_min/fva_max/pfba；条件对比消费区间分离判定——' +
+      '两条件区间分离 = 解空间无关硬结论（a_higher/b_higher），区间重叠（overlap）= 点值差异是求解器伪影，禁止引用。' +
+      '背景：单点 FBA 通量取决于求解器顶点（解空间退化），跨条件点值 diff 是伪影，条件比较必须用本工具的区间制。' +
+      '输入 conditions 数组（name 唯一；medium 支持 {"medium_name": "AB"}；substrates+carbon_mode=sole 对齐 G4 表型语义）；' +
+      '可选 reactions 关注子集（FVA/pFBA 仍全模型算，仅收窄输出口径）、pairs 显式比较对（缺省全唯一对）、' +
+      'only_diff 只看硬结论、export_csv 全量落盘。' +
+      '触发词：通量扫描、区间制、FVA 对比、为什么这个反应通量变了、哪些反应在两个条件下真变了。',
+    parameters: {
+      model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
+      conditions: {
+        type: 'array', items: { type: 'object', additionalProperties: true }, required: true,
+        description: '条件数组，每项 {name(唯一), medium: {"medium_name": "AB"} 或自然名字典, substrates?: ["L-Arabinose"], carbon_mode?: "supplement"(默认)|"sole"}',
+      },
+      reactions: { type: 'array', items: { type: 'string' }, description: '可选：关注反应子集（FVA/pFBA 仍全模型计算；comparisons/summary 只含子集）' },
+      pairs: { type: 'array', items: { type: 'array', items: { type: 'string' } }, description: '可选：显式比较对 [[\"AB\",\"AB+Ara\"]]；缺省=conditions 全唯一对' },
+      fraction_of_optimum: { type: 'number', description: 'FVA 最优约束分数（默认 0.9999，避免 1.0 数值噪声致空/窄区间）' },
+      tolerance: { type: 'number', description: '区间分离容差 mmol/gDW/h（默认 1e-6；分离要求区间间隙 > 容差）' },
+      only_diff: { type: 'boolean', description: 'true=只输出 hard_conclusion 反应（默认 false）' },
+      export_csv: { type: 'string', description: '全量结果 CSV 落盘路径（所有反应×条件对×区间/点值/判定），返回文件路径' },
+    },
+    op: 'fluxscan',
+    timeoutMs: 900_000,
+  })))
+
   return () => disposers.forEach((d) => d())
 }
 
 export const gemToolNames = ['gem_report', 'gem_validate', 'gem_gapfind', 'gem_gapfill', 'gem_build',
   'gem_gapseq', 'gem_phenotype', 'gem_essentiality', 'gem_annotate', 'gem_media_resolve', 'gem_l3_fix',
-  'gem_biomass']
+  'gem_biomass', 'gem_fluxscan']

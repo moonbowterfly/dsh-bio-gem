@@ -232,6 +232,25 @@ def op_l3_fix(args):
 
 
 # ---------------------------------------------------------------------------
+# op: fluxscan — 阶段A-M1 通量区间制（FVA 区间 + pFBA 点值 + 条件对区间分离判定）
+# 语义 bsp 锁稿：overlap = 求解器伪影禁止引用；判定公式见 fluxscan.judge_interval（单测锁定）
+# ---------------------------------------------------------------------------
+def op_fluxscan(args):
+    from fluxscan import fluxscan, DEFAULT_FRACTION, DEFAULT_TOL
+    model = args.get("model")
+    if not model or not os.path.exists(model):
+        return {"ok": False, "error": f"model file not found: {model}"}
+    if not args.get("conditions"):
+        return {"ok": False, "error": "conditions required（非空数组，每项 {name, medium, substrates?, carbon_mode?}，name 唯一）"}
+    return {"ok": True, "result": fluxscan(
+        model, args.get("conditions"), reactions=args.get("reactions"),
+        pairs=args.get("pairs"),
+        fraction_of_optimum=args.get("fraction_of_optimum", DEFAULT_FRACTION),
+        tolerance=args.get("tolerance", DEFAULT_TOL),
+        only_diff=args.get("only_diff", False), export_csv=args.get("export_csv"))}
+
+
+# ---------------------------------------------------------------------------
 # 分发器
 # ---------------------------------------------------------------------------
 OPS = {
@@ -283,6 +302,7 @@ def op_biomass_apply(args):
 # OPS 引用上面的 op 函数——biomass 两 op 定义在 main 前补充注册（避免前向引用 NameError）
 OPS["biomass_inspect"] = op_biomass_inspect
 OPS["biomass_apply"] = op_biomass_apply
+OPS["fluxscan"] = op_fluxscan
 
 
 def main():

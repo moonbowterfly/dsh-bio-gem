@@ -163,7 +163,7 @@ async function main() {
     bg?.error === 'budget_exceeded' && bg?.confirm_required === true, JSON.stringify(bg))
   const toolsSrc = readFileSync(join(REPO, 'src', 'tools.js'), 'utf8')
   const nReg = (toolsSrc.match(/ctx\.tools\.register\(/g) || []).length
-  check('tools: 12 个语义化工具注册', nReg === 12, `got ${nReg}`)
+  check('tools: 13 个语义化工具注册', nReg === 13, `got ${nReg}`)
 
   // 7) Q2 工程质量件：SBML 往返保真（GPR 防丢）+ 模型卡 v2 selftest
   const rt = await runPy('roundtrip_check.py', { model: C58 })
@@ -182,6 +182,34 @@ async function main() {
   })
   check('模型卡 v2: selftest（init/append 版本递增/legacy 迁移/phenotype/essential 形状）',
     cardOk?.ok === true && cardOk?.result?.selftest === 'pass', JSON.stringify(cardOk))
+
+  // 8) M1 fluxscan：区间分离判定单测（锁定公式）+ op 协议 + 真实单条件锚点（~35s）
+  const fsSelf = await new Promise((resolve, reject) => {
+    const cp = spawn(PY, ['-I', join(PYDIR, 'fluxscan.py'), '--selftest'], { cwd: PYDIR, windowsHide: true })
+    let o = ''
+    cp.stdout.on('data', (d) => { o += d })
+    cp.on('close', () => {
+      try { resolve(JSON.parse(o.trim().split(/\r?\n/).filter(Boolean).pop())) }
+      catch (e) { reject(new Error('fluxscan selftest parse fail: ' + o.slice(-200))) }
+    })
+    cp.on('error', reject)
+  })
+  check('fluxscan: 区间分离判定单测（锁定公式 分离/重叠/零通量/负向/精确边界/容差）',
+    fsSelf?.ok === true && fsSelf?.result?.selftest === 'pass' && (fsSelf?.result?.cases ?? 0) >= 10,
+    JSON.stringify(fsSelf))
+  const fsp = await runPy('gem_ops.py', { op: 'fluxscan', args: {} })
+  check('fluxscan: op 协议（缺 model 明确报错）',
+    fsp?.ok === false && /model file not found/.test(fsp?.error || ''), JSON.stringify(fsp))
+  const fsx = await runPy('gem_ops.py', {
+    op: 'fluxscan',
+    args: { model: C58, conditions: [{ name: 'AB', medium: { medium_name: 'AB' } }] },
+  })
+  check('fluxscan: AB 单条件 growth 0.519981（区间制路径）',
+    fsx?.result?.conditions?.[0] && Math.abs(fsx.result.conditions[0].growth - 0.519981) < 1e-9,
+    JSON.stringify(fsx?.result?.conditions?.[0]))
+  check('fluxscan: 输出口径声明（units + fraction 0.9999）',
+    fsx?.result?.units === 'mmol/gDW/h' && fsx?.result?.fraction_of_optimum === 0.9999,
+    JSON.stringify({ units: fsx?.result?.units, f: fsx?.result?.fraction_of_optimum }))
 
   console.log(`\n结果: ${passed} 通过 / ${failed} 失败`)
   process.exit(failed ? 1 : 0)
