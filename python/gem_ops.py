@@ -179,6 +179,18 @@ def op_essential_scan(args):
 
 
 # ---------------------------------------------------------------------------
+# op: annotate — 基因组注释（官方优先 + pyrodigal 兜底）
+# ---------------------------------------------------------------------------
+def op_annotate(args):
+    from annotate import nucleotide_to_protein
+    fna = args.get("fna")
+    if not fna or not os.path.exists(fna):
+        return {"ok": False, "error": f"fna file not found: {fna}"}
+    faa, src, stats = nucleotide_to_protein(fna, args.get("out"))
+    return {"ok": True, "result": {"faa": faa, "source": src, "stats": stats}}
+
+
+# ---------------------------------------------------------------------------
 # 分发器
 # ---------------------------------------------------------------------------
 OPS = {
@@ -189,6 +201,7 @@ OPS = {
     "gapseq": op_gapseq,
     "phenotype_fix": op_phenotype_fix,
     "essential_scan": op_essential_scan,
+    "annotate": op_annotate,
 }
 
 

@@ -215,6 +215,21 @@ export function registerTools(ctx) {
     timeoutMs: 600_000,
   })))
 
+  // gem_annotate：基因组注释（纯 Windows；官方优先 + pyrodigal 兜底）
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_annotate',
+    description:
+      '把细菌基因组核苷酸 FASTA（.fna）转成蛋白 FASTA（.faa），供 gem_build(CarveMe) 使用。' +
+      '优先级：同目录 *_protein.faa（官方蛋白）→ 同目录 cds_from_genomic.fna 直译 → 同目录 *.gff 解析翻译 → pyrodigal 预测（兜底）。' +
+      '返回 {faa, source, stats}。触发词：注释、基因组转蛋白、建蛋白序列、pyrodigal。',
+    parameters: {
+      fna: { type: 'string', required: true, description: '基因组核苷酸 fasta 绝对路径（.fna）' },
+      out: { type: 'string', description: '输出蛋白 fasta 路径（缺省同目录 <base>.gem_annot.faa）' },
+    },
+    op: 'annotate',
+    timeoutMs: 300_000,
+  })))
+
   return () => disposers.forEach((d) => d())
 }
 

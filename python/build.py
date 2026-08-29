@@ -55,7 +55,13 @@ def resolve_input(input_spec, progress_path=None, engine="carveme"):
         raise ValueError(f"gapseq 引擎需要核苷酸 fasta（.fna/.fasta）：{p}")
     if low.endswith((".faa", ".fasta", ".fa", ".faa.gz", ".fasta.gz")):
         return p
-    raise ValueError(f"unsupported input type: {p}（carveme 请提供 protein.faa；gapseq 请提供 genomic.fna）")
+    if engine == "carveme" and low.endswith((".fna", ".fna.gz")):
+        # 路线 P0：裸/带注释基因组 -> 注释层 -> 蛋白（官方优先 + pyrodigal 兜底）
+        from annotate import nucleotide_to_protein
+        faa, src, stats = nucleotide_to_protein(p)
+        print(f"[annotate] source={src} seqs={stats.get('seqs')} -> {faa}")
+        return faa
+    raise ValueError(f"unsupported input type: {p}（carveme 请提供 protein.faa 或 genomic.fna；gapseq 请提供 genomic.fna）")
 
 
 def run_carve(proteins, out_xml, venv=None, progress_path=None, timeout=3600, gapfill_medium="M9"):
