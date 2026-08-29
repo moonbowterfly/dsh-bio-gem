@@ -149,9 +149,22 @@ def apply_fixes(model_path, medium=None, substrates=None, max_add=20, out=None, 
         if not os.path.exists(backup):
             shutil.copy2(model_path, backup)
     silent_write_sbml(m, out_path)
+    # 模型卡 lineage 追加（源模型旁有 card 才传播+追加；无卡不凭空造卡）
+    card_version = None
+    try:
+        from model_card import append_operation, load_card, propagate_card
+        propagate_card(model_path, out_path)
+        if load_card(out_path) is not None:
+            card = append_operation(out_path, "gapfill", reactions_added=len(applied),
+                                    detail={"L1": sum(1 for a in applied if a["type"] == "L1_exchange"),
+                                            "L2": sum(1 for a in applied if a["type"] == "L2_transport")})
+            card_version = (card or {}).get("model_lineage", {}).get("version")
+    except Exception:
+        pass
     return {"applied": applied, "skipped": skipped, "gaps": {
         "L1": len(gaps["L1"]), "L2": len(gaps["L2"]), "L3": len(gaps["L3"])},
-        "out": out_path, "backup": backup, "fixed_rxns": len(applied)}
+        "out": out_path, "backup": backup, "fixed_rxns": len(applied),
+        "card_version": card_version}
 
 
 if __name__ == "__main__":

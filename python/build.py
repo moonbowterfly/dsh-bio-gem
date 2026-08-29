@@ -207,21 +207,20 @@ def build(input_spec, name=None, medium=None, venv=None, out_dir=None, progress_
             "growth_rate": target.get("growth"), "units": "mmol/gDW/h",
             "validation_status": "verified_G3_G4" if target.get("gapfixes_applied", 0) == 0 else "verified_G3_only",
         })
-    card = {
-        "name": name, "engine": "carveme", "engine_version": _carve_version(venv),
-        "carve_cmd": "carve INPUT -o OUT -g M9",
-        "started": datetime.datetime.now().isoformat(timespec="seconds"),
-        "elapsed_s": dt, "model": out_xml,
-        "validations_m9": {k: rep_m9[k]["status"] for k in ("g1", "g2", "g3")},
-        "growth_g3_m9": g3_m9.get("growth_medium"),
-        "m9_exchanges": len(med_m9),
-        "target": target,
-        "supported_mediums": supported,
-        "mapping": {"protein_input": proteins},
-    }
-    card_path = os.path.join(out_dir, name + ".card.json")
-    with open(card_path, "w", encoding="utf-8") as f:
-        json.dump(card, f, ensure_ascii=False, indent=2)
+    # 模型卡（schema v2：init_card 统一基座 —— lineage v0.1.0 起始 + changelog=[build]）
+    from model_card import init_card
+    card, card_path = init_card(
+        out_xml, name=name, engine="carveme", changelog_note="build",
+        engine_version=_carve_version(venv),
+        carve_cmd="carve INPUT -o OUT -g M9",
+        started=datetime.datetime.now().isoformat(timespec="seconds"),
+        elapsed_s=dt, model=out_xml,
+        validations_m9={k: rep_m9[k]["status"] for k in ("g1", "g2", "g3")},
+        growth_g3_m9=g3_m9.get("growth_medium"),
+        m9_exchanges=len(med_m9),
+        target=target,
+        supported_mediums=supported,
+        mapping={"protein_input": proteins})
     _log(progress_path, {"event": "build_done", "model": out_xml, "card": card_path, "s": dt})
     return {"model": out_xml, "card": card_path,
             "validations_m9": card["validations_m9"],
@@ -290,19 +289,17 @@ def _build_gapseq(input_fna, name=None, medium=None, out_dir=None, progress_path
         _log(progress_path, {"event": "gapseq_no_medium"})
         rep = None
 
-    card = {
-        "name": name, "engine": "gapseq", "engine_version": p.get("gapseq_version"),
-        "gapseq_probe": p.get("level"),
-        "started": datetime.datetime.now().isoformat(timespec="seconds"),
-        "elapsed_s": dt, "model": model,
-        "validations": {k: rep[k]["status"] for k in ("g1", "g2", "g3")} if rep else None,
-        "growth_g3": rep["g3"].get("growth_medium") if rep else None,
-        "target": target,
-        "mapping": {"genome_input": input_fna},
-    }
-    card_path = os.path.join(out_dir, name + ".card.json")
-    with open(card_path, "w", encoding="utf-8") as f:
-        json.dump(card, f, ensure_ascii=False, indent=2)
+    from model_card import init_card
+    card, card_path = init_card(
+        model, name=name, engine="gapseq", changelog_note="build",
+        engine_version=p.get("gapseq_version"),
+        gapseq_probe=p.get("level"),
+        started=datetime.datetime.now().isoformat(timespec="seconds"),
+        elapsed_s=dt, model=model,
+        validations={k: rep[k]["status"] for k in ("g1", "g2", "g3")} if rep else None,
+        growth_g3=rep["g3"].get("growth_medium") if rep else None,
+        target=target,
+        mapping={"genome_input": input_fna})
     _log(progress_path, {"event": "build_done", "model": model, "card": card_path, "s": dt})
     return {"model": model, "card": card_path,
             "validations": card["validations"], "growth_g3": card["growth_g3"],

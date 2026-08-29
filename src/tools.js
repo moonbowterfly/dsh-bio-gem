@@ -274,8 +274,44 @@ export function registerTools(ctx) {
     timeoutMs: 900_000,
   })))
 
+  // gem_biomass：biomass 精修（Q2：inspect 只读 / apply 显式覆盖表 + 三联对照）
+  disposers.push(ctx.tools.register(defineTool({
+    name: 'gem_biomass',
+    description:
+      'biomass（FBA 目标函数）精修工具，action 两步：\n' +
+      'action=inspect（只读，无副作用）：解析 biomass 反应 → 组分表（met_id/name/coeff/compartment/类别）+ 摘要' +
+      '（组分个数、原子总量、类别分布：氨基酸/核酸/脂质/辅因子/金属/其他）；reference 可选 iML1515/both 对照' +
+      '（含 iNX1344_v4 按代谢物名同义尽力翻译，翻不了明示 unmapped N 个，不强行全翻）。\n' +
+      'action=apply（显式修改）：必须给 biomass_profile 覆盖表 [{"met_id","coeff","op":"set|add|remove"}]，' +
+      '基于副本替换 biomass → 强制 G1-G6 重验 + 三联对照（生长率/表型匹配率/必需基因 delta，单位 mmol/gDW/h）' +
+      '→ 输出 before/after 对照 + 新模型（原文件不动=天然可回滚）+ 模型卡 lineage 追加（有 card 时）。' +
+      '生长变差 WARN 不阻塞；默认不应用任何 profile。' +
+      '触发词：biomass 精修、看生物质组成、改 biomass 系数、目标函数调整。',
+    parameters: {
+      action: { type: 'string', enum: ['inspect', 'apply'], required: true, description: 'inspect=只读诊断；apply=显式应用覆盖表' },
+      model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
+      biomass_profile: { type: 'array', items: { type: 'object', additionalProperties: true }, description: 'apply 用：覆盖表 [{"met_id","coeff","op":"set|add|remove"}]（set 沿用原符号；必须显式提供，缺省报错）' },
+      reference: { type: 'string', enum: ['iML1515', 'iNX1344_v4', 'both'], description: 'inspect 用：参考模板对照' },
+      medium: { type: 'object', additionalProperties: true, description: '对照验证用培养基：{"medium_name": "AB"/"M9"} 或自然名字典' },
+      phenotype_table: { type: 'string', description: 'apply 三联对照用：底物表型 TSV（substrate<TAB>published 0/1）' },
+      out: { type: 'string', description: 'apply 输出模型路径（缺省 <model>_bm.xml）' },
+      essential_sample: { type: 'integer', description: 'apply 必需基因对照抽样数（默认 40，确定性步进抽样）' },
+      note: { type: 'string', description: 'apply 备注（写入模型卡 lineage detail）' },
+    },
+    timeoutMs: 900_000,
+    output: {
+      schema: { type: 'object', additionalProperties: true },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+    },
+    async execute(args) {
+      const op = args.action === 'apply' ? 'biomass_apply' : 'biomass_inspect'
+      return callGem(op, args, { timeoutMs: 900_000 })
+    },
+  })))
+
   return () => disposers.forEach((d) => d())
 }
 
 export const gemToolNames = ['gem_report', 'gem_validate', 'gem_gapfind', 'gem_gapfill', 'gem_build',
-  'gem_gapseq', 'gem_phenotype', 'gem_essentiality', 'gem_annotate', 'gem_media_resolve', 'gem_l3_fix']
+  'gem_gapseq', 'gem_phenotype', 'gem_essentiality', 'gem_annotate', 'gem_media_resolve', 'gem_l3_fix',
+  'gem_biomass']

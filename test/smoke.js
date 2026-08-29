@@ -163,7 +163,25 @@ async function main() {
     bg?.error === 'budget_exceeded' && bg?.confirm_required === true, JSON.stringify(bg))
   const toolsSrc = readFileSync(join(REPO, 'src', 'tools.js'), 'utf8')
   const nReg = (toolsSrc.match(/ctx\.tools\.register\(/g) || []).length
-  check('tools: 11 个语义化工具注册', nReg === 11, `got ${nReg}`)
+  check('tools: 12 个语义化工具注册', nReg === 12, `got ${nReg}`)
+
+  // 7) Q2 工程质量件：SBML 往返保真（GPR 防丢）+ 模型卡 v2 selftest
+  const rt = await runPy('roundtrip_check.py', { model: C58 })
+  check('往返保真: 计数一致 + GPR 无丢失（≥5 复合 GPR 精确对比）',
+    rt?.ok === true && rt?.gpr_diffs === 0 && (rt?.gpr_compared ?? 0) >= 5,
+    JSON.stringify(rt?.counts) + ` gpr=${rt?.gpr_total} compared=${rt?.gpr_compared} diffs=${rt?.gpr_diffs}`)
+  const cardOk = await new Promise((resolve, reject) => {
+    const cp = spawn(PY, ['-I', join(PYDIR, 'model_card.py'), '--selftest'], { cwd: PYDIR, windowsHide: true })
+    let o = ''
+    cp.stdout.on('data', (d) => { o += d })
+    cp.on('close', () => {
+      try { resolve(JSON.parse(o.trim().split(/\r?\n/).filter(Boolean).pop())) }
+      catch (e) { reject(new Error('card selftest parse fail: ' + o.slice(-200))) }
+    })
+    cp.on('error', reject)
+  })
+  check('模型卡 v2: selftest（init/append 版本递增/legacy 迁移/phenotype/essential 形状）',
+    cardOk?.ok === true && cardOk?.result?.selftest === 'pass', JSON.stringify(cardOk))
 
   console.log(`\n结果: ${passed} 通过 / ${failed} 失败`)
   process.exit(failed ? 1 : 0)

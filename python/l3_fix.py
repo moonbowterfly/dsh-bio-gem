@@ -595,6 +595,19 @@ def l3_fix(model_path, medium=None, substrates=None, out=None,
             resp["applied"] = []
             resp["bound_relaxed"] = []
         resp["out"] = out
+        # 模型卡 lineage 追加（源模型旁有 card 才传播+追加；无卡不凭空造卡）
+        try:
+            from model_card import append_operation, load_card, propagate_card
+            propagate_card(model_path, out)
+            if load_card(out) is not None:
+                card = append_operation(out, "l3_fix", reactions_added=len(resp["applied"]),
+                                        detail={"bound_relaxed": len(resp["bound_relaxed"]),
+                                                "rolled_back": resp["rolled_back"],
+                                                "substrates": [i.get("substrate") for i in results],
+                                                "evidence": resp.get("evidence_summary")})
+                resp["card_version"] = (card or {}).get("model_lineage", {}).get("version")
+        except Exception:
+            pass
     else:
         resp["note"] = "no L3 fix applied（均为不可补或无候选；证据见 l3_input）"
 

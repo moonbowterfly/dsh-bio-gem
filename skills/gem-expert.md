@@ -14,6 +14,7 @@ language: mixed
 | 验证模型质量（五道关卡：加载/元素平衡/生长真实性/表型/必需性抽检）| `gem_validate`（model + medium）|
 | 模型在目标培养基不长，想知道为什么 | `gem_gapfind`（model + medium + substrates）|
 | gapfind 判 L3（内部路径）后自动补洞（白名单/MILP）| `gem_l3_fix`（model + medium + substrates；allow_math=true 才放数学连接；补后自动跑 G6 防能量循环）|
+| 看/改 biomass（FBA 目标函数）| `gem_biomass`（action=inspect 只读组分/对照参考；apply 显式 profile + 三联对照，原文件不动可回滚）|
 | 按缺口自动补洞（缺交换/转运规则修复）| `gem_gapfill`（model + medium）→ 补完重跑 `gem_validate` |
 | 从细菌基因组（蛋白 FASTA 或核苷酸 .fna）构建模型 | `gem_build`（input + 可选 target_medium；fna 自动注释）|
 | 只有裸基因组 .fna，先要蛋白序列 | `gem_annotate`（fna → faa；官方优先 + pyrodigal 兜底）|

@@ -17,7 +17,7 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 
 **裁决原则**：GLM 分析质量高但缺本机上下文（输出单位、输入形态、部署面=本机为主的现实），凡冲突处以本机实测与产品原则为准。
 
-## 3. 工具契约（11 工具 ↔ Python 层；10 op + build CLI）
+## 3. 工具契约（12 工具 ↔ Python 层；12 op + build CLI）
 
 | 工具 | Python 层 | 阶段 |
 |---|---|---|
@@ -32,8 +32,9 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 | gem_l3_fix | op l3_fix（L3 补洞：L3a 连通性 + L3b 白名单/BiGG；证据分级 + 预算闸门 + G6 回滚）| ✅ B' DONE（C58 Arabinose 0→0.851）|
 | gem_report | op model_info | ✅ DONE |
 | gem_media_resolve | op media_resolve（介质解析 RPC，消费侧统一入口）| ✅ DONE |
+| gem_biomass | op biomass_inspect / biomass_apply（inspect 组分+对照参考；apply 覆盖表+三联对照+原文件不动回滚）| ✅ Q2 DONE（复位 delta 0.0）|
 
-> Python 分发器 `gem_ops.py` 共 **10 个 op**（model_info/validate/gapfind/gapfill/gapseq/phenotype_fix/essential_scan/annotate/media_resolve/l3_fix）；`gem_build` 不经分发器，由 `build.py` CLI 直接调用（长任务，jobs.js 拉起）。工具数（11）≠ op 数（10）。
+> Python 分发器 `gem_ops.py` 共 **12 个 op**（model_info/validate/gapfind/gapfill/gapseq/phenotype_fix/essential_scan/annotate/media_resolve/l3_fix/biomass_inspect/biomass_apply）；`gem_build` 不经分发器，由 `build.py` CLI 直接调用（长任务，jobs.js 拉起）。工具数（12）≈ op 数（12）；附模型卡统一写入 `python/model_card.py`（lineage/verified_phenotypes/essential_genes）与往返保真自检 `python/roundtrip_check.py`。
 
 ## 4. 引擎路线（M1→M2→M3）
 

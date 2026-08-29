@@ -13,6 +13,7 @@ Genome-scale metabolic model builder for dsh: genome in, validated SBML out.
 | `gem_gapfind` | 缺口分级诊断（L1 缺交换 / L2 缺转运 / L3 内部路径）| ✅ |
 | `gem_gapfill` | 规则级补洞（L1/L2 自动，provenance 打标，防过补四闸门）| ✅ |
 | `gem_l3_fix` | L3 内部路径补洞（L3a 连通性/L3b 白名单+BiGG 反应式；证据分级 + 防过补第五闸门）| ✅ C58 阿拉伯糖 0→0.851 |
+| `gem_biomass` | biomass 精修（inspect 组分/对照参考；apply 覆盖表+三联对照+回滚）| ✅ 复位 delta 0.0 |
 | `gem_phenotype` | 表型回填迭代（G4 sole 检测 → L1/L2 修复 → L3 报告 → 匹配率对比）| ✅ |
 | `gem_essentiality` | 全量必需基因扫描（FVA 预筛 + 手工敲除）| ✅ C58: 必需 155 |
 | `gem_annotate` | 基因组→蛋白（官方优先 + pyrodigal 兜底，纯 Windows）| ✅ pyrodigal 5330 |

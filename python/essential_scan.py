@@ -60,7 +60,7 @@ def essential_scan(model_path, medium=None, gene_subset=None, progress=None):
             progress({"tested": len(cand_genes), "essential_so_far": len(essential)})
     knock_s = round(time.time() - t0, 1)
 
-    return {
+    result = {
         "wt_growth": round(wt, 6),
         "total_genes": len(m.genes),
         "fva_tested_reactions": len(fva),
@@ -73,8 +73,16 @@ def essential_scan(model_path, medium=None, gene_subset=None, progress=None):
         "knock_seconds": knock_s,
         "medium_preset": preset,
         "medium_unresolved": unresolved,
-        "note": "必需判定=A 培养基下敲除生长<1e-6；evidence 分级待白名单/MILP 落地后补充",
+        "note": "必需判定=A 培养基下敲除生长<1e-6；evidence 分级按基因支撑反应是否含 EVIDENCE_math（Q2）",
     }
+    # 模型卡 schema v2 回写（产物旁已有 card 才写；无卡不凭空造卡）
+    try:
+        from model_card import load_card, set_essential_genes
+        if load_card(model_path) is not None:
+            set_essential_genes(model_path, result, model=m)
+    except Exception:
+        pass
+    return result
 
 
 if __name__ == "__main__":

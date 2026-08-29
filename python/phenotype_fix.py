@@ -67,16 +67,32 @@ def phenotype_fix(model_path, phenotype_table=None, medium=None, max_add=20, out
     after_rate = am / at if at else None
     print(f"[after] 匹配 {am}/{at}（{after_rate:.1%}）", file=sys.stderr)
 
-    return {
+    result = {
         "before": {"matched": bm, "total": bt, "rate": before_rate},
         "after": {"matched": am, "total": at, "rate": after_rate},
         "improved": (after_rate or 0) > (before_rate or 0),
         "fixed": fixed,
         "l3_remaining": l3_list,
+        "after_results": g4a.get("results") or [],
         "model": cur,
         "medium_preset": preset,
         "medium_unresolved": unresolved,
     }
+    # 模型卡 schema v2 回写（源模型旁有 card 才传播+追加；无卡不凭空造卡）
+    card_version = None
+    try:
+        from model_card import append_operation, load_card, propagate_card, set_verified_phenotypes
+        propagate_card(model_path, cur)
+        if load_card(cur) is not None:
+            set_verified_phenotypes(cur, result, semantics="sole")
+            card = append_operation(cur, "phenotype_fix", reactions_added=len(fixed),
+                                    detail={"before": result["before"], "after": result["after"],
+                                            "l3_remaining": len(l3_list)})
+            card_version = (card or {}).get("model_lineage", {}).get("version")
+    except Exception:
+        pass
+    result["card_version"] = card_version
+    return result
 
 
 if __name__ == "__main__":

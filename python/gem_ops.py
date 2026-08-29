@@ -248,6 +248,43 @@ OPS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# op: biomass_inspect / biomass_apply — Q2 任务一：biomass 精修（可选 profile，不默认替换）
+# ---------------------------------------------------------------------------
+def op_biomass_inspect(args):
+    from biomass_tools import inspect_biomass
+    model = args.get("model")
+    if not model or not os.path.exists(model):
+        return {"ok": False, "error": f"model file not found: {model}"}
+    r = inspect_biomass(model, reference=args.get("reference"),
+                        universal_path=args.get("universal_path"), inx_path=args.get("inx_path"))
+    if r.get("ok"):
+        return {"ok": True, "result": r["result"]}
+    return {"ok": False, "error": r.get("error") or "inspect failed"}
+
+
+def op_biomass_apply(args):
+    from biomass_tools import apply_biomass
+    model = args.get("model")
+    if not model or not os.path.exists(model):
+        return {"ok": False, "error": f"model file not found: {model}"}
+    if not args.get("biomass_profile"):
+        return {"ok": False, "error": "provide biomass_profile（显式覆盖表 [{met_id, coeff, op: set|add|remove}]）；"
+                                      "默认不应用任何 profile，只读诊断请用 action=inspect"}
+    r = apply_biomass(model, args.get("biomass_profile"), medium=args.get("medium"),
+                      phenotype_table=args.get("phenotype_table"), out=args.get("out"),
+                      essential_sample=args.get("essential_sample", 40), note=args.get("note"))
+    if r.get("ok"):
+        return {"ok": True, "result": r["result"]}
+    return {"ok": False, "error": r.get("error") or "apply failed",
+            "skipped": r.get("skipped")}
+
+
+# OPS 引用上面的 op 函数——biomass 两 op 定义在 main 前补充注册（避免前向引用 NameError）
+OPS["biomass_inspect"] = op_biomass_inspect
+OPS["biomass_apply"] = op_biomass_apply
+
+
 def main():
     line = sys.stdin.read()
     try:
