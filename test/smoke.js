@@ -95,6 +95,23 @@ async function main() {
   const l1missing = (gf?.L1 ?? []).some((x) => x.exchange === 'EX_cpd00076_e0' || x.type === 'exchange_unresolved_name' || x.type === 'exchange_missing_name')
   check('gapfind: 蔗糖 L1 缺口检出', l1missing, JSON.stringify(gf?.L1))
 
+  // 3b) 跨引擎介质解析护栏：O2 不得误配到 Acetoin（2026-08-29 回归：子串回退防误伤）
+  const cev = await runPy('gapfind.py', {
+    model: 'D:/Program/hermes/temp/gem_build_test/C58_carveme_test.xml',
+    medium: { medium_name: 'AB' },
+  }, true)
+  const resolvedIds = Object.keys((cev?._debug?.resolved) || {})
+  const usesTempModel = existsSync('D:/Program/hermes/temp/gem_build_test/C58_carveme_test.xml')
+  if (usesTempModel) {
+    const rx = cev?.resolved_exchanges ?? []
+    check('解析护栏: 含 EX_o2_e', rx.includes('EX_o2_e'), JSON.stringify(rx))
+    check('解析护栏: 不含 EX_actn__R_e（O2 误配回归）', !rx.includes('EX_actn__R_e'), JSON.stringify(rx))
+    check('解析护栏: medium_unresolved 空', (cev?.medium_unresolved ?? []).length === 0,
+      JSON.stringify(cev?.medium_unresolved))
+  } else {
+    console.log('  ⚠️ 跳过 CarveMe 解析护栏（临时模型不存在）')
+  }
+
   // 4) gapfill（补洞 + 修复后生长验证）
   const tmp = mkdtempSync(join(tmpdir(), 'gem-smoke-'))
   const out = join(tmp, 'gf.xml')

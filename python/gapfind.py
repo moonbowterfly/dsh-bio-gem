@@ -130,7 +130,13 @@ def build_ex_index(m):
 
 
 def match_ex(sub, ex_idx):
-    """底物名 -> EX id；三层：精确(含 SYN 别名) -> CARVE_ALIAS -> 子串回退。"""
+    """底物名 -> EX id；三层：精确(含 SYN 别名) -> CARVE_ALIAS -> 受控子串回退。
+    子串回退防误伤（2026-08-29 实测）：'o2' 曾命中 'R Acetoin C4H8O2'（名字尾部含 o2）
+    导致 O2 交换错配 -> 模型"AB 不生长"假象。规则：
+      - 短 key（<=4 且不含 '+'）：只允许前缀匹配（n.startswith(key)）
+      - 含 '+' 的 key（金属离子）：允许前缀或后缀（iron(fe3+)→ironfe3+ endswith fe3+）
+      - 长 key（>=5）：允许子串
+    """
     key = norm(sub)
     if key in ex_idx:
         return ex_idx[key]
@@ -142,11 +148,14 @@ def match_ex(sub, ex_idx):
         if a in ex_idx:
             return ex_idx[a]
         for n, rid in ex_idx.items():
-            if a and (a in n or n in a):
+            if a and (n.startswith(a) or (("+" in a or len(a) >= 5) and a in n)):
                 return rid
     for n, rid in ex_idx.items():
-        if key and (key in n or n in key):
-            return rid
+        if key in n or n in key:
+            if n.startswith(key):
+                return rid
+            if "+" in key or len(key) >= 5:
+                return rid
     return None
 
 
@@ -257,7 +266,8 @@ def find_gaps(model_path, medium=None, substrates=None):
                        "note": "需要文献反应或人工审核（M1 不自动补）"})
 
     return {"L1": L1, "L2": L2, "L3": L3,
-            "medium_unresolved": unresolved_names}
+            "medium_unresolved": unresolved_names,
+            "resolved_exchanges": sorted(resolved_med)}
 
 
 def _mids_exist(m, ex_id):
