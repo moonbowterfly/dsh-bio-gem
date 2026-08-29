@@ -78,20 +78,36 @@ def find_biomass_gam(m):
     bio = max(cands, key=lambda r: len(r.metabolites))
 
     stub, stub_coeffs = {}, {}
+    unclassified_energy_scale = []
     for met, coeff in bio.metabolites.items():
         role = _classify_energy_met(met)
         if role and abs(coeff) > 1.0 and role not in stub:
             stub[role] = met.id
             stub_coeffs[role] = coeff
+    # 阶段A-M5 适配（iNX1344_v4 探索结论）：H2O 角色的代谢物可能公式缺失（如 M00001_c
+    # formula=None），且其量级与 GAM 净水电解量（ADP 系数）一致——量级回退补判。
+    if {"atp", "adp", "pi", "h"} <= set(stub) and "h2o" not in stub:
+        gam_scale = abs(stub_coeffs["adp"])
+        for met, coeff in bio.metabolites.items():
+            if met.id in set(stub.values()) or abs(coeff) <= 1.0:
+                continue
+            if _classify_energy_met(met) is None \
+                    and abs(abs(coeff) - gam_scale) / gam_scale < 0.05:
+                stub["h2o"] = met.id
+                stub_coeffs["h2o"] = coeff
+                break
     carrier, gam_orig = "not_found", None
     if all(k in stub for k in ("atp", "adp", "pi", "h2o", "h")):
         carrier = "inside_biomass"
         gam_orig = abs(stub_coeffs["adp"])
     else:
-        # 独立载体候选：ATP 水解类维持反应（ATPM 风格，通常带强制 lb>0）
+        # 独立载体候选：纯 ATPM 型维持反应——反应内全部代谢物都是能量 stub 角色
+        # （M5 探索教训：含额外底物的 ATP 水解反应如谷氨酰胺合成酶会误命中，须排除）
         for r in m.reactions:
-            roles = {_classify_energy_met(met) for met in r.metabolites}
-            if {"atp", "adp", "pi"} <= roles and ("h" in roles or "h2o" in roles):
+            roles = [_classify_energy_met(met)
+                     for met in r.metabolites]
+            if r.metabolites and all(roles) and set(roles) <= {"atp", "adp", "pi", "h2o", "h"} \
+                    and {"atp", "adp", "pi"} <= set(roles):
                 carrier = "independent_reaction"
                 gam_mets = {met.id for met in r.metabolites}
                 gam_orig = abs(r.lower_bound) if r.lower_bound > 0 else None
@@ -223,6 +239,10 @@ def sensitivity(model_path, medium=None, biomass_scales=None, gam_grid=None,
     base_row["baseline"] = True
     grid.append(base_row)
     baseline_set = set(base_row["essential_genes"])
+    degenerate = base_row["growth"] <= EPS  # 阶段A-M5 发现：wt=0 时必需性判定退化（候选全判"必需"）
+    if degenerate:
+        log("[sens] WARN: 基准组合 wt_growth<=0（介质不可解析/模型不生长）——必需性判定退化，"
+            "结果仅证明工具在该模型上跑通，essential 集无生物学意义")
     if baseline_check is not None:
         base_row["baseline_matches_essential_scan"] = (baseline_set == set(baseline_check))
         log(f"[sens] 基准组合 vs essential_scan: {len(baseline_set)} vs {len(set(baseline_check))} "
@@ -366,6 +386,7 @@ def sensitivity(model_path, medium=None, biomass_scales=None, gam_grid=None,
         "baseline_reproduced": bool(base_row.get("baseline_matches_essential_scan",
                                                  baseline_set is not None)) if baseline_check is not None else None,
         "baseline_assert_always_or_conditional": baseline_assert_ok,
+        "baseline_growth_degenerate": bool(degenerate),
         "stability": stability,
         "component_sensitivity": {"top_sensitive": top_sensitive, "rows": comp_rows},
         "component_essentiality_drift": drift,
