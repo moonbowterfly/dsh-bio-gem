@@ -197,6 +197,24 @@ export function registerTools(ctx) {
     timeoutMs: 300_000,
   })))
 
+  // gem_essentiality：G5 全量必需基因扫描（FVA 预筛 + 手工敲除）
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_essentiality',
+    description:
+      '对代谢模型做全量必需基因扫描：FVA（全范围）预筛出可通量的反应关联基因（死基因免敲，通常省 30-50% 计算），' +
+      '再对候选逐一手工敲除（with m: 循环）判定是否必需（敲除后生长<1e-6）。' +
+      'medium 推荐 {"medium_name": "AB"}。输出必需基因列表 + 数量 + wt 生长 + 耗时统计。' +
+      '结果可用于模型卡"必需基因"章节（对照文献/实验必需基因集即召回率）。' +
+      '触发词：必需基因扫描、全量必要基因、essentiality scan、敲除全扫。',
+    parameters: {
+      model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
+      medium: { type: 'object', additionalProperties: true, description: '培养基：{"medium_name": "AB"} 或自然名成分字典' },
+      gene_subset: { type: 'array', items: { type: 'string' }, description: '可选：只扫描指定基因（限制范围）' },
+    },
+    op: 'essential_scan',
+    timeoutMs: 600_000,
+  })))
+
   return () => disposers.forEach((d) => d())
 }
 

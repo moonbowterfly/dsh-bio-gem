@@ -167,6 +167,18 @@ def op_phenotype_fix(args):
 
 
 # ---------------------------------------------------------------------------
+# op: essential_scan — G5 全量必需基因扫描（路线 P0）
+# ---------------------------------------------------------------------------
+def op_essential_scan(args):
+    from essential_scan import essential_scan
+    model = args.get("model")
+    if not model or not os.path.exists(model):
+        return {"ok": False, "error": f"model file not found: {model}"}
+    r = essential_scan(model, medium=args.get("medium"), gene_subset=args.get("gene_subset"))
+    return {"ok": True, "result": r}
+
+
+# ---------------------------------------------------------------------------
 # 分发器
 # ---------------------------------------------------------------------------
 OPS = {
@@ -176,6 +188,7 @@ OPS = {
     "gapfill": op_gapfill,
     "gapseq": op_gapseq,
     "phenotype_fix": op_phenotype_fix,
+    "essential_scan": op_essential_scan,
 }
 
 

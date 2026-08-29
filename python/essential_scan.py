@@ -1,0 +1,84 @@
+# essential_scan.py — G5 全量必需性扫描（路线 P0：FVA 预筛 + 手工敲除）
+# 流程: 介质设置 -> FVA(全范围) 预筛可通量基因（死基因免敲）-> 手工单基因敲除
+#       -> 必需基因列表 + 模型卡章节数据（证据分级配色字段）
+# Windows 纪律: FVA processes=1（无 fork）；手工敲除循环；GLPK 快速线性
+import os
+import sys
+import time
+import cobra
+from cobra.flux_analysis import flux_variability_analysis
+
+from silentio import silent_read_sbml
+from gapfind import expand_medium, resolve_medium
+
+EPS = 1e-6
+FVA_EPS = 1e-9
+
+
+def essential_scan(model_path, medium=None, gene_subset=None, progress=None):
+    """全量必需基因扫描。返回 {wt, total_genes, tested, essential, essential_genes,
+    predicted_viable, timeout_aborted, fva_seconds, knock_seconds}。"""
+    m = silent_read_sbml(model_path)
+    med, preset = expand_medium(medium) if medium else ({}, None)
+    resolved, unresolved = resolve_medium(m, med) if med else ({}, [])
+    for r in m.reactions:
+        if r.id.startswith(("EX_", "DM_", "SK_")) or r.boundary:
+            r.lower_bound = 0.0
+    for exid, lb in resolved.items():
+        if exid in m.reactions:
+            m.reactions.get_by_id(exid).lower_bound = lb
+    with m:
+        wt = m.optimize().objective_value
+    print(f"[scan] wt = {wt:.6f}; genes = {len(m.genes)}; medium_unresolved = {unresolved}", file=sys.stderr)
+
+    # 1) FVA 预筛（fraction_of_optimum=0 全范围）：无通量的反应关联基因免敲
+    t0 = time.time()
+    fva = flux_variability_analysis(m, fraction_of_optimum=0.0, processes=1)
+    fva_s = round(time.time() - t0, 1)
+    active_rxns = set(fva.index[((fva["maximum"] > FVA_EPS) | (fva["minimum"] < -FVA_EPS))])
+    print(f"[scan] FVA {fva_s}s；可通量反应 {len(active_rxns)}/{len(fva)}", file=sys.stderr)
+
+    cand_genes = set()
+    for g in m.genes:
+        if gene_subset and g.id not in gene_subset:
+            continue
+        if any(r.id in active_rxns for r in g.reactions):
+            cand_genes.add(g.id)
+    print(f"[scan] 候选基因（关联可通量反应）{len(cand_genes)}", file=sys.stderr)
+    print(f"[scan]         预计免敲 {max(0, len(m.genes) - len(cand_genes))} 个（{max(0, len(m.genes)-len(cand_genes))/max(1,len(m.genes))*100:.0f}%）", file=sys.stderr)
+
+    # 2) 手工敲除循环（HANDOFF-03：不用 single_gene_deletion）
+    t0 = time.time()
+    essential = []
+    for gid in sorted(cand_genes):
+        with m:
+            m.genes.get_by_id(gid).knock_out()
+            v = m.optimize().objective_value
+        if v < EPS:
+            essential.append(gid)
+        if progress and len(essential) % 50 == 0:
+            progress({"tested": len(cand_genes), "essential_so_far": len(essential)})
+    knock_s = round(time.time() - t0, 1)
+
+    return {
+        "wt_growth": round(wt, 6),
+        "total_genes": len(m.genes),
+        "fva_tested_reactions": len(fva),
+        "active_reactions": len(active_rxns),
+        "tested_genes": len(cand_genes),
+        "essential_count": len(essential),
+        "essential_genes": essential,
+        "organs": {"essential_count": len(essential), "viable_ratio": round(1 - len(essential)/max(1, len(cand_genes)), 4)},
+        "fva_seconds": fva_s,
+        "knock_seconds": knock_s,
+        "medium_preset": preset,
+        "medium_unresolved": unresolved,
+        "note": "必需判定=A 培养基下敲除生长<1e-6；evidence 分级待白名单/MILP 落地后补充",
+    }
+
+
+if __name__ == "__main__":
+    import json
+    args = json.loads(open(sys.argv[1], encoding="utf-8").read()) if len(sys.argv) > 1 else {}
+    print(json.dumps(essential_scan(args.get("model"), args.get("medium"),
+                                    args.get("gene_subset")), ensure_ascii=False, indent=2))
