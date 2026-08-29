@@ -14,7 +14,11 @@ language: mixed
 | 验证模型质量（五道关卡：加载/元素平衡/生长真实性/表型/必需性抽检）| `gem_validate`（model + medium）|
 | 模型在目标培养基不长，想知道为什么 | `gem_gapfind`（model + medium + substrates）|
 | 按缺口自动补洞（缺交换/转运规则修复）| `gem_gapfill`（model + medium）→ 补完重跑 `gem_validate` |
-| 从细菌基因组（蛋白 FASTA）构建模型 | `gem_build`（input + 可选 target_medium）|
+| 从细菌基因组（蛋白 FASTA 或核苷酸 .fna）构建模型 | `gem_build`（input + 可选 target_medium；fna 自动注释）|
+| 只有裸基因组 .fna，先要蛋白序列 | `gem_annotate`（fna → faa；官方优先 + pyrodigal 兜底）|
+| 需要模型的全量必需基因清单 | `gem_essentiality`（FVA 预筛 + 手工敲除；medium 推荐 AB）|
+| 用 Biolog/文献表型表校准模型（提升匹配率）| `gem_phenotype`（phenotype_table + medium；自动补 L1/L2）|
+| 把自然名培养基转成模型交换（消费方统一入口）| `gem_media_resolve`（model + medium → EX ID 列表）|
 | gapseq 质量重建（需 WSL2）| `gem_gapseq`：setup → launch →（循环 status 直到 done）→ fetch，agent 编排 |
 | 需要跑 FBA/必需性/生产包络线分析 | 用 dsh-bio-genie 的 `bio_fba` / `bio_gene_knockout` / `bio_production_envelope` 等（模型文件直接用）|
 
@@ -32,6 +36,15 @@ language: mixed
   └─ gem_gapseq 原子编排：setup（探测）→ launch（后台 doall，30-60min 不等）→
      status 循环（2-5min/次，running 时不要干等可并行处理其他）→ fetch（产物拷回）
      → gem_validate / gem_gapfind / gem_gapfill 继续质量闭环
+
+裸基因组（.fna）纯 Windows
+  └─ gem_annotate（fna→faa）→ gem_build(engine=carveme) → 验证/补洞闭环
+     （gem_build 内部自动调注释层；也可先 gem_annotate 单独出蛋白）
+
+模型质量进阶
+  └─ gem_essentiality（全量必需基因→模型卡章节）
+  └─ gem_phenotype（表型回填迭代，按 Biolog/文献表校准）
+  └─ gem_media_resolve（介质解析——任何下游要跑 FBA 前先解析介质）
 ```
 
 ## 硬规则（实测，违反会拿错结果）

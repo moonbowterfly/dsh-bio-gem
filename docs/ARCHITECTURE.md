@@ -17,15 +17,22 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 
 **裁决原则**：GLM 分析质量高但缺本机上下文（输出单位、输入形态、部署面=本机为主的现实），凡冲突处以本机实测与产品原则为准。
 
-## 3. 工具契约（5 语义化工具 ↔ Python op）
+## 3. 工具契约（10 工具 ↔ Python 层；9 op + build CLI）
 
-| 工具 | Python op | 阶段 |
+| 工具 | Python 层 | 阶段 |
 |---|---|---|
-| gem_build | build（CarveMe 封装，M9 gapfill）| ✅ M1 DONE（C58 实测 70s）|
-| gem_validate | validate（G1-G5）| ✅ M1 DONE |
-| gem_gapfind | gapfind（L1-L3 分级）| ✅ M1 DONE |
-| gem_gapfill | gapfill（L1/L2 规则 + provenance）| ✅ M1 DONE |
-| gem_report | model_info | ✅ DONE |
+| gem_build | build.py CLI（CarveMe M9 gapfill；fna 自动注释）| ✅ M1+模块 DONE（C58 63-70s）|
+| gem_validate | op validate（G1-G6 + GATE_REGISTRY）| ✅ M1 DONE |
+| gem_gapfind | op gapfind（L1-L3 分级 + 跨引擎介质归一化）| ✅ M1 DONE |
+| gem_gapfill | op gapfill（L1/L2 规则 + provenance）| ✅ M1 DONE |
+| gem_phenotype | op phenotype_fix（表型回填迭代）| ✅ A3 DONE |
+| gem_essentiality | op essential_scan（FVA 预筛 + 手工敲除）| ✅ P0 DONE |
+| gem_annotate | op annotate（官方优先 + pyrodigal）| ✅ P0 DONE |
+| gem_gapseq | op gapseq（WSL 原子四步，可选项）| ✅ 桥全通 |
+| gem_report | op model_info | ✅ DONE |
+| gem_media_resolve | op media_resolve（介质解析 RPC，消费侧统一入口）| ✅ DONE |
+
+> Python 分发器 `gem_ops.py` 共 **9 个 op**（model_info/validate/gapfind/gapfill/gapseq/phenotype_fix/essential_scan/annotate/media_resolve）；`gem_build` 不经分发器，由 `build.py` CLI 直接调用（长任务，jobs.js 拉起）。工具数（10）≠ op 数（9）。
 
 ## 4. 引擎路线（M1→M2→M3）
 

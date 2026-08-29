@@ -1,5 +1,6 @@
-// dsh-bio-gem — 工具层（defineTool 注册，5 语义化工具，M1）
-// 全部执行走 python/gem_ops.py（JSON stdin 协议）；gem_build 走 build.py 长任务。
+// dsh-bio-gem — 工具层（defineTool 注册，10 语义化工具，2026-08-29）
+// 全部执行走 python/gem_ops.py（JSON stdin 协议）或 build.py CLI（gem_build 长任务）。
+// op 与工具对照：9 op + build CLI；详见 docs/ARCHITECTURE.md §3。
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { join } from 'node:path'
 import { dirname, isAbsolute } from 'node:path'

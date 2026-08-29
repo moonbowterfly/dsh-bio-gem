@@ -4,19 +4,22 @@
 
 Genome-scale metabolic model builder for dsh: genome in, validated SBML out.
 
-## 工具（M1）
+## 工具（10）
 
 | 工具 | 作用 | 状态 |
 |---|---|---|
 | `gem_report` | 模型摘要（基因/反应/区室/复制子分布）| ✅ |
-| `gem_validate` | 五道验证关卡 G1-G5（加载/元素平衡/生长真实性/表型(条件)/必需性抽检(条件)）| ✅ |
+| `gem_validate` | 六道关卡 G1-G6（加载/元素平衡/生长真实性/表型(条件)/必需性抽检(条件)/ATP 泄漏）| ✅ |
 | `gem_gapfind` | 缺口分级诊断（L1 缺交换 / L2 缺转运 / L3 内部路径）| ✅ |
 | `gem_gapfill` | 规则级补洞（L1/L2 自动，provenance 打标，防过补四闸门）| ✅ |
-| `gem_build` | CarveMe/gapseq 双引擎基因组→SBML 构建（后台 job + 进度；M9 或目标介质验证闭环）| ✅ carveme 70s / gapseq 实测中 |
+| `gem_phenotype` | 表型回填迭代（G4 sole 检测 → L1/L2 修复 → L3 报告 → 匹配率对比）| ✅ |
+| `gem_essentiality` | 全量必需基因扫描（FVA 预筛 + 手工敲除）| ✅ C58: 必需 155 |
+| `gem_annotate` | 基因组→蛋白（官方优先 + pyrodigal 兜底，纯 Windows）| ✅ pyrodigal 5330 |
+| `gem_build` | CarveMe/gapseq 双引擎构建（fna/faa；后台 job + 进度；M9 或目标介质验证闭环）| ✅ carveme 70s / fna 全链 63.5s / gapseq 实测中 |
+| `gem_gapseq` | gapseq 原子四步（WSL 可选：setup/launch/status/fetch）| ✅ 本机全通 |
+| `gem_media_resolve` | 跨引擎介质解析 RPC（自然名→EX ID；消费侧统一入口）| ✅ AB→20 EX |
 
-## 架构
-
-见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)（M1 定稿：决策记录、关卡规格、补洞闸门、模型卡 schema、验收线）。
+架构/决策见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/DECISIONS-2026-08-29.md](docs/DECISIONS-2026-08-29.md)。
 
 ## 开发速查
 

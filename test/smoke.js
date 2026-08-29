@@ -75,7 +75,7 @@ async function main() {
   const skipBuild = process.argv.includes('--skip-build')
   console.log('dsh-bio-gem smoke (C58 回归锚)')
 
-  // 1) model_info
+  // 1) model_info —— 注意：断言目标为 C58_P1.xml（P1 补洞版，2492 反应）；VM系 C58.xml 为 2485（见 zcode 验证报告 D7）
   const mi = await runPy('gem_ops.py', { op: 'model_info', args: { model: C58P1 } })
   check('model_info: 1084 基因', mi?.result?.genes === 1084, `got ${mi?.result?.genes}`)
   check('model_info: 2492 反应', mi?.result?.reactions === 2492, `got ${mi?.result?.reactions}`)
