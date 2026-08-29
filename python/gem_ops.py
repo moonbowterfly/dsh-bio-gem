@@ -127,7 +127,8 @@ def op_gapfill(args):
         return {"ok": False, "error": "need medium and/or substrates to drive gapfill"}
     return {"ok": True, "result": apply_fixes(
         model, medium=args.get("medium"), substrates=args.get("substrates"),
-        max_add=args.get("max_add", 20), out=args.get("out"))}
+        max_add=args.get("max_add", 20), out=args.get("out"),
+        confirm_budget=args.get("confirm_budget", False))}
 
 
 # ---------------------------------------------------------------------------
@@ -211,6 +212,26 @@ def op_media_resolve(args):
 
 
 # ---------------------------------------------------------------------------
+# op: l3_fix — B' 后半：L3 内部路径补洞（L3a 模型内连通性 + L3b 白名单/BiGG 反应式）
+# 证据分级 EVIDENCE_sequence/math；防过补第五闸门（budget.py）；补后 G1-G6 重验 + G6 失败回滚
+# ---------------------------------------------------------------------------
+def op_l3_fix(args):
+    from l3_fix import l3_fix
+    model = args.get("model")
+    if not model or not os.path.exists(model):
+        return {"ok": False, "error": f"model file not found: {model}"}
+    if not (args.get("medium") or args.get("substrates")):
+        return {"ok": False, "error": "need medium and substrates to drive L3 diagnosis"}
+    return {"ok": True, "result": l3_fix(
+        model, medium=args.get("medium"), substrates=args.get("substrates"),
+        out=args.get("out"), allow_math=args.get("allow_math", False),
+        confirm_budget=args.get("confirm_budget", False),
+        whitelist=args.get("whitelist"), faa=args.get("faa"),
+        species=args.get("species"), max_iter=args.get("max_iter", 1),
+        universal_path=args.get("universal_path"))}
+
+
+# ---------------------------------------------------------------------------
 # 分发器
 # ---------------------------------------------------------------------------
 OPS = {
@@ -223,6 +244,7 @@ OPS = {
     "essential_scan": op_essential_scan,
     "annotate": op_annotate,
     "media_resolve": op_media_resolve,
+    "l3_fix": op_l3_fix,
 }
 
 

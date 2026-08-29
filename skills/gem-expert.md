@@ -13,6 +13,7 @@ language: mixed
 | 已有 SBML 模型文件，想知道概要（基因/反应/复制子）| `gem_report`（model 参数=绝对路径）|
 | 验证模型质量（五道关卡：加载/元素平衡/生长真实性/表型/必需性抽检）| `gem_validate`（model + medium）|
 | 模型在目标培养基不长，想知道为什么 | `gem_gapfind`（model + medium + substrates）|
+| gapfind 判 L3（内部路径）后自动补洞（白名单/MILP）| `gem_l3_fix`（model + medium + substrates；allow_math=true 才放数学连接；补后自动跑 G6 防能量循环）|
 | 按缺口自动补洞（缺交换/转运规则修复）| `gem_gapfill`（model + medium）→ 补完重跑 `gem_validate` |
 | 从细菌基因组（蛋白 FASTA 或核苷酸 .fna）构建模型 | `gem_build`（input + 可选 target_medium；fna 自动注释）|
 | 只有裸基因组 .fna，先要蛋白序列 | `gem_annotate`（fna → faa；官方优先 + pyrodigal 兜底）|

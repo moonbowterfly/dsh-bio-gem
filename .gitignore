@@ -3,3 +3,10 @@ logs/
 *.log
 __pycache__/
 *.pyc
+
+# B' 白名单本地数据（license 守则：rxn 库/命中集不进 git/发布包）
+*.dmnd
+rxn_all.fa
+rxn_map.tsv
+*hits.tsv
+whitelist/

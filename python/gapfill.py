@@ -36,6 +36,7 @@ def _add_ex_rxn(m, e0_met, tag):
     r.add_metabolites({e0_met: -1})
     m.add_reactions([r])
     r.notes["source"] = "gem-gapfill"
+    r.notes["evidence"] = "EVIDENCE_rule"
     r.notes["reason"] = f"L1: add exchange for medium component ({tag})"
     return r
 
@@ -50,16 +51,24 @@ def _add_tx_rxn(m, e0_id, c0_id, tag):
                        m.metabolites.get_by_id(c0_id): 1})
     m.add_reactions([r])
     r.notes["source"] = "gem-gapfill"
+    r.notes["evidence"] = "EVIDENCE_rule"
     r.notes["reason"] = f"L2: connect extracellular {e0_id} to cytosol ({tag})"
     return r
 
 
-def apply_fixes(model_path, medium=None, substrates=None, max_add=20, out=None):
+def apply_fixes(model_path, medium=None, substrates=None, max_add=20, out=None, confirm_budget=False):
     from silentio import silent_read_sbml, silent_write_sbml
     if not (medium or substrates):
         return {"error": "nothing to fix: provide medium and/or substrates"}
     gaps = find_gaps(model_path, medium=medium, substrates=substrates)
     m = silent_read_sbml(model_path)
+    # ---- 防过补第五闸门（全局预算）：本批计划 = 规则可修的 L1/L2 缺口数 ----
+    from budget import budget_gate
+    planned = sum(1 for g in (gaps["L1"] + gaps["L2"]) if g.get("fixable") == "yes")
+    gate = budget_gate(m, planned=planned, confirm_budget=confirm_budget)
+    if gate:
+        return {"ok": False, **gate, "gaps": {"L1": len(gaps["L1"]), "L2": len(gaps["L2"]),
+                                              "L3": len(gaps["L3"])}}
     ex_idx = build_ex_index(m)
     met_idx = build_met_index(m)
     applied, skipped = [], []
@@ -150,4 +159,5 @@ if __name__ == "__main__":
     args = json.loads(open(sys.argv[1], encoding="utf-8").read()) if len(sys.argv) > 1 else {}
     print(json.dumps(apply_fixes(args.get("model"), args.get("medium"),
                                  args.get("substrates"), args.get("max_add", 20),
-                                 args.get("out")), ensure_ascii=False, indent=2))
+                                 args.get("out"), args.get("confirm_budget", False)),
+                     ensure_ascii=False, indent=2))

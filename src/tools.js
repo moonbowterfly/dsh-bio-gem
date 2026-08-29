@@ -1,6 +1,6 @@
-// dsh-bio-gem — 工具层（defineTool 注册，10 语义化工具，2026-08-29）
+// dsh-bio-gem — 工具层（defineTool 注册，11 语义化工具，2026-08-29）
 // 全部执行走 python/gem_ops.py（JSON stdin 协议）或 build.py CLI（gem_build 长任务）。
-// op 与工具对照：9 op + build CLI；详见 docs/ARCHITECTURE.md §3。
+// op 与工具对照：10 op（含 l3_fix）+ build CLI；详见 docs/ARCHITECTURE.md §3。
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { join } from 'node:path'
 import { dirname, isAbsolute } from 'node:path'
@@ -247,7 +247,35 @@ export function registerTools(ctx) {
     timeoutMs: 120_000,
   })))
 
+  // gem_l3_fix：L3 内部路径补洞（B' 后半：L3a 模型内连通性 + L3b 白名单/BiGG 反应式 + 证据分级）
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_l3_fix',
+    description:
+      'L3 内部路径补洞（两级，白名单驱动）：对 gapfind 判为 L3 的底物（有交换+转运但不生长）做修复。\n' +
+      'L3a 模型内连通性：先全内部反应放开方向做 LP 预检（快速判"是否纯连通性问题"），可行才用 MILP 取最小放宽集（改 bounds，不复制反应）。\n' +
+      'L3b 白名单+反应式：diamond 白名单命中集（EC/名字桥接 iML1515 反应式移植到本模型命名空间；无匹配不强补）；' +
+      'allow_math=true 时允许纯数学连接（MILP 决策，证据最弱）。PTS 型反应一律排除（PTS-less 机体守则）。\n' +
+      '证据分级：EVIDENCE_sequence（白名单直接对应）> EVIDENCE_math（数学连接，附 sequence_hint 表示有序列线索的间接桥）；' +
+      '防过补第五闸门：历史累计新增 ≤ max(5, 5%·总反应)，超限返回 confirm_required 需显式 confirm_budget=true。\n' +
+      '补后自动 validate G1-G6 全跑，G6（ATP 泄漏哨兵）非 PASS 自动回滚本批改动。' +
+      '返回每底物 before/after sole 生长 + verdict（fixed/not_fixable + 不可补证据链）。\n' +
+      '触发词：补内部路径、L3 补洞、白名单补反应、为什么补了交换还是不长。',
+    parameters: {
+      model: { type: 'string', required: true, description: 'SBML 文件绝对路径（原文件不动，修复写到 out）' },
+      medium: { type: 'object', additionalProperties: true, description: '培养基：可传 {"medium_name": "AB"}（推荐，内置完整成分含金属）或自然名成分字典' },
+      substrates: { type: 'array', items: { type: 'string' }, required: true, description: 'L3 底物名列表（gapfind 报 L3 的底物，如 Arabinose/Mannitol）' },
+      allow_math: { type: 'boolean', description: '是否允许纯数学连接（EVIDENCE_math；默认 false=只用白名单序列证据池）' },
+      confirm_budget: { type: 'boolean', description: '第五闸门超限时显式确认继续（默认 false）' },
+      whitelist: { type: 'string', description: '白名单命中集 JSON 路径（缺省用 ~/.dsh/dsh-bio-gem/whitelist/ 缓存或现场跑 diamond）' },
+      faa: { type: 'string', description: '目标物种蛋白 fasta（白名单未缓存时现场构建用）' },
+      out: { type: 'string', description: '修复后模型输出路径（缺省 <model>_l3.xml）' },
+    },
+    op: 'l3_fix',
+    timeoutMs: 900_000,
+  })))
+
   return () => disposers.forEach((d) => d())
 }
 
-export const gemToolNames = ['gem_report', 'gem_validate', 'gem_gapfind', 'gem_gapfill', 'gem_build']
+export const gemToolNames = ['gem_report', 'gem_validate', 'gem_gapfind', 'gem_gapfill', 'gem_build',
+  'gem_gapseq', 'gem_phenotype', 'gem_essentiality', 'gem_annotate', 'gem_media_resolve', 'gem_l3_fix']

@@ -51,10 +51,59 @@ def build_rxn_fasta(out_fa, out_map=None, min_size=100):
     return n_seq, n_file
 
 
-def diamond_whitelist(faa, db_out, out_tsv, out_dir=None, evalue=1e-5, min_bitscore=60):
-    """makedb + blastp -> 命中反应集。返回 {reactions: {rxn_id: [seq_hits]}, hits}"""
-    r = subprocess_run([DIAMOND, "makedb", "--in", "-", "--db", db_out])
-    pass
+def diamond_whitelist(faa, out_dir, db_path=None, rxn_fa=None, out_tsv=None,
+                      evalue=1e-5, min_bitscore=60, max_target_seqs=5):
+    """B1: diamond blastp 目标物种 faa vs rxn_all 数据库 -> 命中反应集。
+    db_path 缺省用 out_dir/rxn_all.dmnd（无则由 rxn_fa 建，rxn_fa 再缺则用 GEM_GAPSEQ_DB 的 B0 产物）。
+    返回 {"rxn_hits": {rxn_id: [seq_hit_desc...]}, "n_hits": N, "hits_tsv": path, "db": path}。
+    License 守则: rxn 库/命中集仅本地使用，不进 git/发布包（调用方负责落在 ~/.dsh 下）。"""
+    import subprocess
+    os.makedirs(out_dir, exist_ok=True)
+    if not os.path.exists(DIAMOND):
+        raise FileNotFoundError(f"diamond not found: {DIAMOND}")
+    if db_path is None:
+        db_path = os.path.join(out_dir, "rxn_all.dmnd")
+    if rxn_fa is None:
+        rxn_fa = os.path.join(out_dir, "rxn_all.fa")
+    if not os.path.exists(db_path):
+        if not os.path.exists(rxn_fa):
+            # B0 现场聚合（SEQDB rxn/ 目录 -> rxn_all.fa）
+            n_seq, n_file = build_rxn_fasta(rxn_fa)
+            if n_seq == 0:
+                raise FileNotFoundError(f"no rxn fasta built from {SEQDB}/rxn (GEM_GAPSEQ_DB?)")
+        rc, so, se, secs = subprocess_run([DIAMOND, "makedb", "--in", rxn_fa, "--db", db_path])
+        if rc != 0:
+            raise RuntimeError(f"diamond makedb failed rc={rc}: {se}")
+    if out_tsv is None:
+        out_tsv = os.path.join(out_dir, os.path.splitext(os.path.basename(faa))[0] + "_hits.tsv")
+    rc, so, se, secs = subprocess_run(
+        [DIAMOND, "blastp", "-d", db_path, "-q", faa, "-o", out_tsv,
+         "--evalue", str(evalue), "--max-target-seqs", str(max_target_seqs),
+         "--outfmt", "6", "qseqid", "sseqid", "pident", "evalue", "bitscore"],
+        timeout=3600)
+    if rc != 0:
+        raise RuntimeError(f"diamond blastp failed rc={rc}: {se}")
+    rxn_hits = {}
+    with open(out_tsv, encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            p = line.rstrip("\r\n").split("\t")
+            if len(p) < 5:
+                continue
+            qseqid, sseqid = p[0], p[1]
+            try:
+                if float(p[4]) < min_bitscore:
+                    continue
+            except ValueError:
+                continue
+            rxn_id = sseqid.split("|")[0].strip()  # header 约定: RXNID|uniprot...
+            if not rxn_id:
+                continue
+            rxn_hits.setdefault(rxn_id, [])
+            if qseqid not in rxn_hits[rxn_id]:
+                rxn_hits[rxn_id].append(qseqid)
+    return {"rxn_hits": rxn_hits, "n_hits": len(rxn_hits),
+            "hits_tsv": out_tsv, "db": db_path, "evalue": evalue,
+            "min_bitscore": min_bitscore}
 
 
 def subprocess_run(cmd, timeout=3600):

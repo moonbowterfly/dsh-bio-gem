@@ -7,7 +7,7 @@
 //   gapfill     : 自动补洞 >=1 项，修复后蔗糖可生长
 //   build      : protein.faa -> M9 G3 PASS（growth>0）[--skip-build 可跳过]
 import { spawn } from 'node:child_process'
-import { existsSync, writeFileSync, mkdtempSync } from 'node:fs'
+import { existsSync, writeFileSync, mkdtempSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -153,6 +153,17 @@ async function main() {
   } else if (!skipBuild) {
     console.log('  ⚠️ build 跳过：C58 protein.faa 不存在')
   }
+
+  // 6) l3_fix（B' 后半）：op 协议 + 防过补第五闸门 + 工具注册计数（不跑 L3 MILP，保持冒烟秒级）
+  const l3p = await runPy('gem_ops.py', { op: 'l3_fix', args: {} })
+  check('l3_fix: op 协议（缺 model 明确报错）',
+    l3p?.ok === false && /model file not found/.test(l3p?.error || ''), JSON.stringify(l3p))
+  const bg = await runPy('budget.py', { n_reactions: 2485, prior_added: 123, planned: 2 })
+  check('l3_fix: 防过补第五闸门（124 预算超限 confirm_required）',
+    bg?.error === 'budget_exceeded' && bg?.confirm_required === true, JSON.stringify(bg))
+  const toolsSrc = readFileSync(join(REPO, 'src', 'tools.js'), 'utf8')
+  const nReg = (toolsSrc.match(/ctx\.tools\.register\(/g) || []).length
+  check('tools: 11 个语义化工具注册', nReg === 11, `got ${nReg}`)
 
   console.log(`\n结果: ${passed} 通过 / ${failed} 失败`)
   process.exit(failed ? 1 : 0)

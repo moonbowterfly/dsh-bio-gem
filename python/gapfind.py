@@ -219,8 +219,11 @@ def _growth_with(m, medium, extra_ex, lb=-10.0):
 
 
 def _growth_with_solo(m, medium, extra_ex, lb=-10.0):
-    """严格语义：基底 medium 去掉含碳交换 + 额外交换（唯一碳源防 AB 背景掩盖）。"""
+    """严格语义：基底 medium 去掉含碳交换 + 额外交换（唯一碳源防 AB 背景掩盖）。
+    含碳判断用元素解析（parse_formula）——裸子串 'C' in formula 会把 Ca/Cl/Co/Cu 误滤
+    （2026-08-29 实测：氯被误滤后 sole 葡萄糖生长=0，造成 L3 假阳性）。"""
     from silentio import silent_read_sbml
+    from validate import parse_formula
     with m:
         for r in m.reactions:
             if r.id.startswith(EX_PREFIX) or r.boundary:
@@ -228,7 +231,7 @@ def _growth_with_solo(m, medium, extra_ex, lb=-10.0):
         for rid, v in (medium or {}).items():
             if rid in m.reactions:
                 met = list(m.reactions.get_by_id(rid).metabolites)[0]
-                if met.formula and "C" in (met.formula or ""):
+                if met.formula and "C" in parse_formula(met.formula):
                     continue  # 去碳
                 m.reactions.get_by_id(rid).lower_bound = v
         if extra_ex and extra_ex in m.reactions:
