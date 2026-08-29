@@ -16,6 +16,16 @@ CORE_ELEMS = ("C", "N", "P", "S")   # 硬核：不平衡必须 = 0
 REPORT_ELEMS = ("H", "O")           # 报告不阻塞
 ELM_RE = re.compile(r"([A-Z][a-z]?)(\d*)")
 
+# 关卡注册器（GLM 建议 + 2026-08-29 采纳）：未来加 G7 不改主流程
+GATE_REGISTRY = {}
+
+
+def register_gate(name):
+    def deco(fn):
+        GATE_REGISTRY[name] = fn
+        return fn
+    return deco
+
 
 def parse_formula(f):
     """C10H13N5O13P3 -> {"C":10,...}; 忽略 R/X 等通用占位。"""
@@ -165,6 +175,40 @@ class Validator:
         }
         return rep
 
+    # ------------------------------------------------------------------ G6
+    @register_gate("G6")
+    def g6_atp_leak(self, context=None):
+        """ATP 泄漏测试（MEMOTE 核心测试；G3 all-closed 的必要不充分检查）：
+        全关交换后最大化 ATP 代谢物的净消耗（demand），通量 > 0.01 → WARN。
+        补洞后必跑（context.post_gapfill 时不再跳过）。"""
+        m = self.m
+        atp_c = None
+        for x in m.metabolites:
+            if x.compartment == "c0" or x.compartment == "c":
+                nm = (x.id or "").lower()
+                if nm in ("atp_c", "cpd00002_c0"):
+                    atp_c = x
+                    break
+        if atp_c is None:
+            return {"status": "SKIP", "reason": "未找到 ATP 代谢物"}
+        dm = cobra.Reaction("DM_gem_atp_leak", name="G6 ATP 泄漏检测 demand",
+                            lower_bound=0.0, upper_bound=1000.0)
+        dm.add_metabolites({atp_c: -1})
+        m.add_reactions([dm])
+        try:
+            with m:
+                for r in m.reactions:
+                    if r.id.startswith(EX_PREFIX) or r.boundary:
+                        r.lower_bound = 0.0
+                v = m.optimize().objective_value
+        finally:
+            m.remove_reactions([dm])
+        leak = abs(v)
+        status = "PASS" if leak <= 0.01 else "WARN"
+        return {"status": status, "atp_leak_flux": round(leak, 6),
+                "threshold": 0.01, "post_gapfill": bool((context or {}).get("post_gapfill")),
+                "note": "全关交换后 ATP demand 通量应≈0；>0.01 提示能量循环泄漏（L3 MILP 补洞最可能引入）"}
+
     # ------------------------------------------------------------------ G4
     def g4_phenotype(self, table_path=None, substrates=None, medium=None, carbon_mode="supplement"):
         """条件执行：需参照表（TSV: substrate<TAB>published 0/1）或 substrates+published。
@@ -269,14 +313,16 @@ class Validator:
 
     # ------------------------------------------------------------------ run
     def run(self, medium=None, phenotype_table=None, essential_test=None,
-            reference_growth=None, reference_essential=None, carbon_mode="supplement"):
+            reference_growth=None, reference_essential=None, carbon_mode="supplement",
+            context=None):
         from gapfind import resolve_medium, expand_medium
         medium, _preset = expand_medium(medium)
         resolved_med, unresolved = resolve_medium(self.m, medium) if medium else ({}, [])
         report = {"model": self.path,
                   "units": {"growth": "mmol/gDW/h", "note": "objective_value 是 FBA 通量（mmol/gDW/h），不是比生长速率 μ（h⁻¹）"},
                   "g1": self.g1_load(),
-                  "g2": self.g2_balance()}
+                  "g2": self.g2_balance(),
+                  "g6": self.g6_atp_leak(context=context or {})}
         g3 = self.g3_growth(resolved_med, reference_growth)
         if unresolved:
             g3["medium_unresolved"] = unresolved
@@ -290,7 +336,7 @@ class Validator:
             report["g5"] = self.g5_essentiality(essential_test, resolved_med, reference_essential)
         else:
             report["g5"] = {"status": "SKIP", "reason": "no essential_test provided"}
-        # 总判定：G1/G2/G3 全 PASS（或 SKIP 默认）+ 其余不阻塞
+        # 总判定：G1/G2/G3/G6（FATAL 才 FAIL；G6 WARN 级不阻塞但补洞后必查）
         blocked = ["g1", "g2", "g3"]
         fails = [k for k in blocked if report[k]["status"] == "FAIL"]
         warns = [k for k in blocked if report[k]["status"] == "WARN"]
