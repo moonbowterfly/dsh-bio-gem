@@ -38,6 +38,11 @@ CARVE_ALIAS = {
     "fe2+": "fe2+", "fe3+": "fe3+", "h+": "h+", "h": "h+",
     "d-glucose": "d-glucose", "phosphate": "phosphate", "sulfate": "sulfate",
     "glucose": "d-glucose", "ammonia": "ammonium",
+    # gapseq 命名（无 + 后缀）与 CarveMe 全名双候选
+    "mg": ["mg", "magnesium"], "mg2+": ["magnesium", "mg"],
+    "mn": ["mn2+", "manganese"], "zn": ["zn2+", "zinc"], "ca": ["ca2+", "calcium"],
+    "k": ["k+", "potassium"], "na": ["na+", "sodium"], "cl": ["cl-", "chloride"],
+    "fe": ["fe2+", "iron"],
 }
 
 # 常用介质预设（自然名成分 -> lb）。agent 只需传 {"medium_name": "AB"} 即可
@@ -98,6 +103,17 @@ def expand_medium(medium):
     return merged, name
 
 
+# 代谢物 c0 短名别名（自然名/常用名 -> 模型胞内代谢物名；用于 L1 名字补洞）
+# 实测：gapseq 用 BiGG 短名（D-Gluconate-c0 名存为 'GLCN-c0'），SYN 只管 EX 名映射
+MET_ALIAS = {
+    "gluconate": "glcn", "d-gluconate": "glcn", "6-phospho-d-gluconate": "6pgc",
+    "sucrose": "sucrose", "glucose-1-phosphate": "glucose-1-phosphate",
+    "d-glucose-1-phosphate": "glucose-1-phosphate", "g1p": "glucose-1-phosphate",
+    "d-glucose": "d-glucose", "glucose": "d-glucose",
+    "l-malate": "mal__l", "malate": "mal__l", "malic acid": "mal__l",
+    "citrate": "cit", "succinate": "succ", "d-ribose": "rib__d", "ribose": "rib__d",
+}
+
 def norm(s):
     return "".join(ch for ch in (s or "").strip().lower() if ch.isalnum() or ch in "+-")
 
@@ -144,14 +160,19 @@ def match_ex(sub, ex_idx):
     if s and norm(s) in ex_idx:
         return ex_idx[norm(s)]
     a = CARVE_ALIAS.get(key)
-    if a:
+    cands = a if isinstance(a, list) else [a]
+    for a in cands:
+        if not a:
+            continue
         if a in ex_idx:
             return ex_idx[a]
         for n, rid in ex_idx.items():
-            if a and (n.startswith(a) or (("+" in a or len(a) >= 5) and a in n)):
+            if n.startswith(a) or (("+" in a or len(a) >= 5) and a in n):
                 return rid
     for n, rid in ex_idx.items():
-        if key in n or n in key:
+        # 只做正向子串（key 是 n 的子串）；反向（n in key）误伤严重：
+        # "no" in "arabinose"、"co" in "gluconate"、"phosphate" in "glucose-1-phosphate"
+        if key in n:
             if n.startswith(key):
                 return rid
             if "+" in key or len(key) >= 5:
@@ -191,6 +212,24 @@ def _growth_with(m, medium, extra_ex, lb=-10.0):
                 r.lower_bound = 0.0
         for rid, v in (medium or {}).items():
             if rid in m.reactions:
+                m.reactions.get_by_id(rid).lower_bound = v
+        if extra_ex and extra_ex in m.reactions:
+            m.reactions.get_by_id(extra_ex).lower_bound = lb
+        return m.optimize().objective_value
+
+
+def _growth_with_solo(m, medium, extra_ex, lb=-10.0):
+    """严格语义：基底 medium 去掉含碳交换 + 额外交换（唯一碳源防 AB 背景掩盖）。"""
+    from silentio import silent_read_sbml
+    with m:
+        for r in m.reactions:
+            if r.id.startswith(EX_PREFIX) or r.boundary:
+                r.lower_bound = 0.0
+        for rid, v in (medium or {}).items():
+            if rid in m.reactions:
+                met = list(m.reactions.get_by_id(rid).metabolites)[0]
+                if met.formula and "C" in (met.formula or ""):
+                    continue  # 去碳
                 m.reactions.get_by_id(rid).lower_bound = v
         if extra_ex and extra_ex in m.reactions:
             m.reactions.get_by_id(extra_ex).lower_bound = lb
@@ -254,12 +293,12 @@ def find_gaps(model_path, medium=None, substrates=None):
                 "fixable": "yes" if (c0 and c0 in m.metabolites) else "no",
             })
 
-    # ---- L3: 内部路径（有交换+转运但 FBA 不长）----
+    # ---- L3: 内部路径（有交换+转运但 FBA 不长；严格语义=唯一碳源防 AB 背景掩盖）----
     for sub in (substrates or []):
         exid = match_ex(sub, ex_idx)
         if not exid or exid not in m.reactions:
             continue  # L1 已报
-        g = _growth_with(m, resolved_med, exid)
+        g = _growth_with_solo(m, resolved_med, exid)
         if g < 1e-6:
             L3.append({"type": "internal_path", "substrate": sub,
                        "exchange": exid, "growth": round(g, 6),

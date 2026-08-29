@@ -10,7 +10,7 @@ import cobra
 # Python -I isolated 模式下脚本目录不进 sys.path——显式插入以导入同目录 gapfind
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from gapfind import find_gaps, match_ex, build_ex_index, build_met_index, SYN, norm
+from gapfind import find_gaps, match_ex, build_ex_index, build_met_index, SYN, MET_ALIAS, norm
 
 
 def _new_e0_met(m, c0_id, tag):
@@ -45,7 +45,7 @@ def _add_tx_rxn(m, e0_id, c0_id, tag):
     if tx_id in m.reactions:
         return None
     r = cobra.Reaction(tx_id, name=(m.metabolites.get_by_id(e0_id).name or "") + " transport (gem)",
-                       lower_bound=0.0, upper_bound=1000.0)
+                       lower_bound=-1000.0, upper_bound=1000.0)  # 转运默认开启（双向），否则补洞后仍无法流入
     r.add_metabolites({m.metabolites.get_by_id(e0_id): -1,
                        m.metabolites.get_by_id(c0_id): 1})
     m.add_reactions([r])
@@ -93,6 +93,11 @@ def apply_fixes(model_path, medium=None, substrates=None, max_add=20, out=None):
                 s = SYN.get(g["substrate"].strip().lower())
                 if s:
                     sid = met_idx.get(norm(s))
+            if not sid:
+                # MET_ALIAS：自然名 -> BiGG 短名（如 gluconate -> glcn）
+                al = MET_ALIAS.get((g["substrate"] or "").strip().lower())
+                if al:
+                    sid = met_idx.get(norm(al))
             if not sid:
                 skipped.append({**g, "why": "no c0 metabolite by name (unfixable by rules)"})
                 continue

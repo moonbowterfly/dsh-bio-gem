@@ -178,6 +178,25 @@ export function registerTools(ctx) {
     timeoutMs: 180_000,
   })))
 
+  // gem_phenotype：表型回填迭代（G4 驱动，路线 A3）
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_phenotype',
+    description:
+      '表型回填迭代：对模型跑 G4 表型对照（phenotype_table：substrate<TAB>published 0/1，如 Biolog/文献表），' +
+      '对「应生长但模型不长」的底物逐个 gapfind 分级 → L1/L2 交换/转运规则自动补洞（累积修复）→ L3 内部路径列候选清单 → 重跑 G4 对比匹配率。' +
+      'medium 推荐 {"medium_name": "AB"}。输出 before/after 匹配率 + 修复清单 + L3 待处理项。' +
+      '触发词：表型回填、提高表型匹配、Biolog 校准、为什么这个底物不长。',
+    parameters: {
+      model: { type: 'string', required: true, description: 'SBML 文件绝对路径（将基于副本修复，原文件不动）' },
+      phenotype_table: { type: 'string', required: true, description: '表型表 TSV 绝对路径：substrate<TAB>published(0/1)' },
+      medium: { type: 'object', additionalProperties: true, description: '培养基：{"medium_name": "AB"} 或自然名成分字典' },
+      max_add: { type: 'integer', description: '每底物最多新增反应数（默认 20）' },
+      out: { type: 'string', description: '修复后模型输出路径（缺省 <model>_pf.xml）' },
+    },
+    op: 'phenotype_fix',
+    timeoutMs: 300_000,
+  })))
+
   return () => disposers.forEach((d) => d())
 }
 

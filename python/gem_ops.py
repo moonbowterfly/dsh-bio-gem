@@ -153,6 +153,20 @@ def op_gapseq(args):
 
 
 # ---------------------------------------------------------------------------
+# op: phenotype_fix — 表型回填迭代（A3）
+# ---------------------------------------------------------------------------
+def op_phenotype_fix(args):
+    from phenotype_fix import phenotype_fix
+    model = args.get("model")
+    if not model or not os.path.exists(model):
+        return {"ok": False, "error": f"model file not found: {model}"}
+    r = phenotype_fix(model, phenotype_table=args.get("phenotype_table"),
+                      medium=args.get("medium"), max_add=args.get("max_add", 20),
+                      out=args.get("out"))
+    return {"ok": True, "result": r}
+
+
+# ---------------------------------------------------------------------------
 # 分发器
 # ---------------------------------------------------------------------------
 OPS = {
@@ -161,6 +175,7 @@ OPS = {
     "gapfind": op_gapfind,
     "gapfill": op_gapfill,
     "gapseq": op_gapseq,
+    "phenotype_fix": op_phenotype_fix,
 }
 
 

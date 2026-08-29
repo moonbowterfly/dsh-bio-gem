@@ -186,29 +186,14 @@ class Validator:
             return {"status": "SKIP", "reason": "no phenotype reference provided"}
         if not medium:
             return {"status": "SKIP", "reason": "G4 needs medium to define base"}
+        from gapfind import build_ex_index, match_ex, SYN
         m = self.m
-        # EX 名字索引（去 -e0 后缀）
-        ex_norm = {}
-        for r in m.reactions:
-            if r.id.startswith("EX_"):
-                for x in r.metabolites:
-                    nm = (x.name or "").strip().lower()
-                    if nm.endswith("-e0"):
-                        nm = nm[:-3]
-                    ex_norm.setdefault(nm, r.id)
-        syn = {"malic acid": "l-malate", "gluconate": "d-gluconate",
-               "glucose 1-phosphate": "glucose-1-phosphate", "glumate": "l-glutamate"}
+        # 统一走 gapfind 的 build_ex_index + match_ex（修复过子串误配规则；勿再各自实现）
+        ex_idx = build_ex_index(m)
         results = []
         matched = 0
         for sub, pub in rows:
-            key = sub.strip().lower()
-            exid = ex_norm.get(key) or ex_norm.get(syn.get(key, ""))
-            if not exid:
-                # 子串回退
-                for n, rid in ex_norm.items():
-                    if key and (key in n or n in key):
-                        exid = rid
-                        break
+            exid = match_ex(sub, ex_idx)
             # 基底：medium（supplement）或去碳后加底物（sole）
             med2 = dict(medium)
             if carbon_mode == "sole":
