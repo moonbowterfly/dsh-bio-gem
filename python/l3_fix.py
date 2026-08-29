@@ -415,7 +415,10 @@ def l3_fix(model_path, medium=None, substrates=None, out=None,
         exid = match_ex(sub, ex_idx)
         g = _growth_sole(m, resolved_med, exid)
         if exid and exid in m.reactions and g < 1e-6:
-            l3.append({"substrate": sub, "exchange": exid, "growth_sole_before": round(g, 6)})
+            l3.append({"substrate": sub, "exchange": exid, "growth_sole_before": round(g, 6),
+                       # 阶段A-M4 口径声明（只增）
+                       "units": "mmol/gDW/h",
+                       "point_value_note": "单点 FBA 值，非解空间硬结论；条件对比请用 gem_fluxscan 区间分离判定"})
 
     # 第五闸门（入口预检: 每底物至少 1 条新增预估）
     gate0 = budget_gate(m, planned=len(l3), confirm_budget=confirm_budget)
@@ -490,6 +493,8 @@ def l3_fix(model_path, medium=None, substrates=None, out=None,
                                     "evidence": "EVIDENCE_math"})
         growth_a = _growth_sole(cur, resolved_med, exid)
         l3a["growth_sole_after"] = round(growth_a, 6)
+        l3a["units"] = "mmol/gDW/h"
+        l3a["point_value_note"] = "单点 FBA 值，非解空间硬结论；条件对比请用 gem_fluxscan 区间分离判定"
         entry["l3a"] = l3a
 
         # ---- L3b: 白名单/BiGG 反应式（MILP 从候选池取最小集）----
@@ -551,9 +556,13 @@ def l3_fix(model_path, medium=None, substrates=None, out=None,
             _note(f"[l3b] {sub}: picked {len(picked)}, added {len(added_here)}")
         growth_b = _growth_sole(cur, resolved_med, exid)
         l3b["growth_sole_after"] = round(growth_b, 6)
+        l3b["units"] = "mmol/gDW/h"
+        l3b["point_value_note"] = "单点 FBA 值，非解空间硬结论；条件对比请用 gem_fluxscan 区间分离判定"
         l3b["added"] = added_here
         entry["l3b"] = l3b
         entry["growth_sole_after"] = round(max(growth_a, growth_b), 6)
+        entry["units"] = "mmol/gDW/h"
+        entry["point_value_note"] = "单点 FBA 值，非解空间硬结论；条件对比请用 gem_fluxscan 区间分离判定"
         entry["verdict"] = "fixed" if growth_b > 1e-6 else "not_fixable"
         if entry["verdict"] == "not_fixable":
             entry["unfixable_evidence"] = [

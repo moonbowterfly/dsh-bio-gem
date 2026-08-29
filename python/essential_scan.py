@@ -95,6 +95,9 @@ def essential_scan(model_path, medium=None, gene_subset=None, progress=None, led
         "medium_preset": preset,
         "medium_unresolved": unresolved,
         "note": "必需判定=A 培养基下敲除生长<1e-6；evidence 分级按基因支撑反应是否含 EVIDENCE_math（Q2）",
+        # 阶段A-M4 口径声明（只增）：wt_growth 为单点 FBA 值
+        "units": "mmol/gDW/h",
+        "point_value_note": "单点 FBA 值，非解空间硬结论；条件对比请用 gem_fluxscan 区间分离判定",
     })
     # 模型卡 schema v2 回写（产物旁已有 card 才写；无卡不凭空造卡）
     try:

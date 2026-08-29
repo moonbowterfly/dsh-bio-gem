@@ -17,7 +17,7 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 
 **裁决原则**：GLM 分析质量高但缺本机上下文（输出单位、输入形态、部署面=本机为主的现实），凡冲突处以本机实测与产品原则为准。
 
-## 3. 工具契约（12 工具 ↔ Python 层；12 op + build CLI）
+## 3. 工具契约（15 工具 ↔ Python 层；15 op + build CLI）
 
 | 工具 | Python 层 | 阶段 |
 |---|---|---|
@@ -26,15 +26,18 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 | gem_gapfind | op gapfind（L1-L3 分级 + 跨引擎介质归一化）| ✅ M1 DONE |
 | gem_gapfill | op gapfill（L1/L2 规则 + provenance）| ✅ M1 DONE |
 | gem_phenotype | op phenotype_fix（表型回填迭代）| ✅ A3 DONE |
-| gem_essentiality | op essential_scan（FVA 预筛 + 手工敲除）| ✅ P0 DONE |
+| gem_essentiality | op essential_scan（FVA 预筛 + 手工敲除；预测自动入账本）| ✅ P0 DONE |
 | gem_annotate | op annotate（官方优先 + pyrodigal）| ✅ P0 DONE |
 | gem_gapseq | op gapseq（WSL 原子四步，可选项）| ✅ 桥全通 |
 | gem_l3_fix | op l3_fix（L3 补洞：L3a 连通性 + L3b 白名单/BiGG；证据分级 + 预算闸门 + G6 回滚）| ✅ B' DONE（C58 Arabinose 0→0.851）|
-| gem_report | op model_info | ✅ DONE |
+| gem_report | op model_info（+ ledger_summary 基率摘要）| ✅ DONE |
 | gem_media_resolve | op media_resolve（介质解析 RPC，消费侧统一入口）| ✅ DONE |
 | gem_biomass | op biomass_inspect / biomass_apply（inspect 组分+对照参考；apply 覆盖表+三联对照+原文件不动回滚）| ✅ Q2 DONE（复位 delta 0.0）|
+| gem_fluxscan | op fluxscan（通量区间制：FVA 区间+pFBA 点值+条件对区间分离判定，overlap=伪影禁止引用）| ✅ 阶段A-M1 DONE（C58 AB 0.519981 / 蔗糖 supplement 0.97077）|
+| gem_sensitivity | op sensitivity（GAM×biomass 22 组合全量+稳定性三分类+单组分漂移；模型卡 robustness v3）| ✅ 阶段A-M2 DONE（基准复现 155）|
+| gem_ledger | op ledger（prediction ledger：list/query/update；幂等追加式账本）| ✅ 阶段A-M3 DONE（C58 155+19 条幂等复跑）|
 
-> Python 分发器 `gem_ops.py` 共 **12 个 op**（model_info/validate/gapfind/gapfill/gapseq/phenotype_fix/essential_scan/annotate/media_resolve/l3_fix/biomass_inspect/biomass_apply）；`gem_build` 不经分发器，由 `build.py` CLI 直接调用（长任务，jobs.js 拉起）。工具数（12）≈ op 数（12）；附模型卡统一写入 `python/model_card.py`（lineage/verified_phenotypes/essential_genes）与往返保真自检 `python/roundtrip_check.py`。
+> Python 分发器 `gem_ops.py` 共 **15 个 op**（model_info/validate/gapfind/gapfill/gapseq/phenotype_fix/essential_scan/annotate/media_resolve/l3_fix/biomass_inspect/biomass_apply/fluxscan/sensitivity/ledger）；`gem_build` 不经分发器，由 `build.py` CLI 直接调用（长任务，jobs.js 拉起）。工具数（15）= op 数（15）（biomass 一工具映射两 op，build 走 CLI 不占 op）。附模型卡统一写入 `python/model_card.py`（lineage/verified_phenotypes/essential_genes/robustness v3）与往返保真自检 `python/roundtrip_check.py`；预测账本 `python/ledger.py`（`~/.dsh/dsh-bio-gem/ledger/predictions.jsonl`）。**生长/通量数值口径（阶段A-M4）**：所有产出生长/通量数值的工具输出均带 `units: mmol/gDW/h` 与单点 FBA 声明；条件间通量对比一律走 gem_fluxscan 区间分离判定（overlap=伪影禁止引用）。
 
 ## 4. 引擎路线（M1→M2→M3）
 

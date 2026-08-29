@@ -19,6 +19,9 @@ language: mixed
 | 从细菌基因组（蛋白 FASTA 或核苷酸 .fna）构建模型 | `gem_build`（input + 可选 target_medium；fna 自动注释）|
 | 只有裸基因组 .fna，先要蛋白序列 | `gem_annotate`（fna → faa；官方优先 + pyrodigal 兜底）|
 | 需要模型的全量必需基因清单 | `gem_essentiality`（FVA 预筛 + 手工敲除；medium 推荐 AB）|
+| 跨条件通量对比（哪个反应真变了）| `gem_fluxscan`（区间制：FVA 区间+pFBA 点值，区间分离=硬结论，overlap=伪影禁止引用）|
+| 量化模型不确定性（biomass/GAM 扰动下预测稳不稳）| `gem_sensitivity`（22 组合网格+稳定性三分类+单组分漂移；action=probe 秒级探测）|
+| 查询/更新模型预测（必需性/表型预测追踪与实验兑现）| `gem_ledger`（list/query/update；预测默认 unverified，兑现后回填状态）|
 | 用 Biolog/文献表型表校准模型（提升匹配率）| `gem_phenotype`（phenotype_table + medium；自动补 L1/L2）|
 | 把自然名培养基转成模型交换（消费方统一入口）| `gem_media_resolve`（model + medium → EX ID 列表）|
 | gapseq 质量重建（需 WSL2）| `gem_gapseq`：setup → launch →（循环 status 直到 done）→ fetch，agent 编排 |
@@ -57,6 +60,7 @@ language: mixed
 3. **CarveMe 模型的介质边界**：`gem_build` 默认在 M9 最小培养基验证（生长阳性）；**AB 等自定义培养基若 FAIL 且 gapfind 判定 L3（内部路径），规则补洞修不了**——此时如实报告「模型可用介质=M9，目标介质需要 L3 级文献补充」，绝不要假装自愈。
 4. **缺口 90% 是 L1/L2**（缺交换/转运，非缺分解酶）——先诊断再补，别直接加反应。
 5. **多复制子正常**：质粒/多染色体基因都在同一模型内（C58 实测 4 复制子：967/434/65/18 基因分布于 ChrⅠ/ChrⅡ/pTi/pAt）。
+6. **通量区间制（阶段A-M4 硬规则）**：无区间不点数——任何条件间通量对比必须消费 `gem_fluxscan` 的区间分离判定；两条件区间分离才是解空间无关硬结论（a_higher/b_higher）；overlap 反应的任何点值 diff 必须标注"伪影，禁止引用"。单点 FBA 生长/通量值（gem_validate/gem_phenotype/gem_essentiality 等输出）只是该条件下的一个解，跨条件直接 diff 是求解器伪影。
 
 ## C58 回归锚（验证工具是否正常）
 
