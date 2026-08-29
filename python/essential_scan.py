@@ -83,7 +83,7 @@ def scan_essentiality(m, gene_subset=None, progress=None):
     }
 
 
-def essential_scan(model_path, medium=None, gene_subset=None, progress=None):
+def essential_scan(model_path, medium=None, gene_subset=None, progress=None, ledger_path=None):
     """全量必需基因扫描。返回 {wt, total_genes, tested, essential, essential_genes,
     predicted_viable, timeout_aborted, fva_seconds, knock_seconds}。"""
     m = silent_read_sbml(model_path)
@@ -103,6 +103,17 @@ def essential_scan(model_path, medium=None, gene_subset=None, progress=None):
             set_essential_genes(model_path, result, model=m)
     except Exception:
         pass
+    # 阶段A-M3: prediction ledger 自动登记（每必需基因一条；幂等去重；写入失败仅 WARN 不阻塞）
+    try:
+        import ledger as _ledger
+        from model_card import load_card as _load_card
+        lineage_v = ((_load_card(model_path) or {}).get("model_lineage") or {}).get("version")
+        cond = preset or (f"custom({len(resolved)} EX)" if resolved else "unspecified")
+        result["ledger_registration"] = _ledger.register_essentiality(
+            model_path, result, model=m, condition=cond, lineage_version=lineage_v,
+            path=ledger_path)
+    except Exception as e:
+        sys.stderr.write(f"[scan] ledger registration WARN: {type(e).__name__}: {e}\n")
     return result
 
 

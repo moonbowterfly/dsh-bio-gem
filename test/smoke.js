@@ -163,7 +163,7 @@ async function main() {
     bg?.error === 'budget_exceeded' && bg?.confirm_required === true, JSON.stringify(bg))
   const toolsSrc = readFileSync(join(REPO, 'src', 'tools.js'), 'utf8')
   const nReg = (toolsSrc.match(/ctx\.tools\.register\(/g) || []).length
-  check('tools: 14 个语义化工具注册', nReg === 14, `got ${nReg}`)
+  check('tools: 15 个语义化工具注册', nReg === 15, `got ${nReg}`)
 
   // 7) Q2 工程质量件：SBML 往返保真（GPR 防丢）+ 模型卡 v2 selftest
   const rt = await runPy('roundtrip_check.py', { model: C58 })
@@ -231,6 +231,46 @@ async function main() {
     sensProbe?.result?.biomass_rxn === 'bio1' && sensProbe?.result?.carrier_type === 'inside_biomass'
     && Math.abs((sensProbe?.result?.gam_orig ?? 0) - 40.0) < 1e-6,
     JSON.stringify(sensProbe?.result))
+
+  // 10) M3 ledger：幂等/容错 selftest + gem_report 账本摘要 e2e（临时账本，含坏行）
+  const ledSelf = await new Promise((resolve, reject) => {
+    const cp = spawn(PY, ['-I', join(PYDIR, 'ledger.py'), '--selftest'], { cwd: PYDIR, windowsHide: true })
+    let o = ''
+    cp.stdout.on('data', (d) => { o += d })
+    cp.on('close', () => {
+      try { resolve(JSON.parse(o.trim().split(/\r?\n/).filter(Boolean).pop())) }
+      catch (e) { reject(new Error('ledger selftest parse fail: ' + o.slice(-200))) }
+    })
+    cp.on('error', reject)
+  })
+  check('ledger: selftest（登记/幂等/前缀 query/update/坏行容错）',
+    ledSelf?.ok === true && ledSelf?.result?.selftest === 'pass', JSON.stringify(ledSelf))
+  const tmpLedgerDir = mkdtempSync(join(tmpdir(), 'gem-smoke-ledger-'))
+  const tmpLedger = join(tmpLedgerDir, 'predictions.jsonl')
+  writeFileSync(tmpLedger, [
+    JSON.stringify({ prediction_id: 'P0001', type: 'essentiality', content: 'g1 在 AB 培养基下必需',
+      model: C58, condition: 'AB', status: 'unverified', evidence_tier: 'EVIDENCE_rule' }),
+    JSON.stringify({ prediction_id: 'P0002', type: 'phenotype', content: '底物 X 预测生长',
+      model: C58, condition: 'AB/sole', status: 'literature_supported', evidence_tier: 'EVIDENCE_literature' }),
+    '{"corrupt line...\n',
+  ].join('\n'))
+  const miLedger = await runPy('gem_ops.py', { op: 'model_info', args: { model: C58P1, ledger_path: tmpLedger } })
+  check('gem_report: ledger_summary（2 行 + by_status/by_type + corrupt 1 不阻塞）',
+    miLedger?.result?.ledger_summary?.total === 2
+    && miLedger?.result?.ledger_summary?.corrupt_rows === 1
+    && miLedger?.result?.ledger_summary?.by_status?.unverified === 1
+    && miLedger?.result?.ledger_summary?.by_status?.literature_supported === 1
+    && typeof miLedger?.result?.ledger_context === 'string',
+    JSON.stringify(miLedger?.result?.ledger_summary))
+  const ledUpdate = await runPy('gem_ops.py', { op: 'ledger', args: { action: 'update',
+    prediction_id: 'P0002', status: 'experimentally_verified', ledger_path: tmpLedger } })
+  check('gem_ledger: op update（P0002 -> experimentally_verified）',
+    ledUpdate?.ok === true && ledUpdate?.result?.row?.status === 'experimentally_verified',
+    JSON.stringify(ledUpdate))
+  const ledQuery = await runPy('gem_ops.py', { op: 'ledger', args: { action: 'query',
+    status: 'experimentally_verified', ledger_path: tmpLedger } })
+  check('gem_ledger: op query（更新后可过滤）',
+    ledQuery?.ok === true && ledQuery?.result?.matched === 1, JSON.stringify(ledQuery?.result?.matched))
 
   console.log(`\n结果: ${passed} 通过 / ${failed} 失败`)
   process.exit(failed ? 1 : 0)

@@ -23,7 +23,7 @@ def _is_n_source(name):
     return (name or "").strip().lower() in N_SOURCES
 
 
-def phenotype_fix(model_path, phenotype_table=None, medium=None, max_add=20, out=None):
+def phenotype_fix(model_path, phenotype_table=None, medium=None, max_add=20, out=None, ledger_path=None):
     if not phenotype_table or not os.path.exists(phenotype_table):
         return {"error": "phenotype_table 必需（TSV: substrate<TAB>published 0/1）"}
     med, preset = expand_medium(medium)
@@ -92,6 +92,17 @@ def phenotype_fix(model_path, phenotype_table=None, medium=None, max_add=20, out
     except Exception:
         pass
     result["card_version"] = card_version
+    # 阶段A-M3: prediction ledger 自动登记（每底物一条 G4 结果；幂等去重；失败仅 WARN）
+    try:
+        import ledger as _ledger
+        from model_card import load_card as _load_card
+        lineage_v = ((_load_card(cur) or {}).get("model_lineage") or {}).get("version")
+        cond = (preset or "custom") + "/sole"
+        result["ledger_registration"] = _ledger.register_phenotype(
+            cur, result.get("after_results") or [], condition=cond, lineage_version=lineage_v,
+            model=silent_read_sbml(cur), path=ledger_path)
+    except Exception as e:
+        print(f"[phenotype_fix] ledger registration WARN: {type(e).__name__}: {e}", file=sys.stderr)
     return result
 
 

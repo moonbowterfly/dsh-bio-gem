@@ -69,6 +69,19 @@ def op_model_info(args):
             repl["_".join(parts[:2])] += 1
         else:
             repl["other"] += 1
+    # 阶段A-M3: prediction ledger 基率摘要（文件不存在 -> {total: 0}；ledger_path 可覆盖默认账本）
+    ledger_summary, ledger_context = None, None
+    try:
+        import ledger as _ledger
+        ledger_summary = _ledger.ledger_summary(path=args.get("ledger_path"))
+        n_unverified = ledger_summary["by_status"].get("unverified", 0)
+        if ledger_summary["total"]:
+            ledger_context = (f"预测账本共 {ledger_summary['total']} 条（其中 {n_unverified} 条 unverified）："
+                              "全部为模型推导预测（essentiality/phenotype 等），实验或文献兑现前不应当作事实引用；"
+                              "状态分布即预测可信度基率，回填后 by_status 向 literature_supported/"
+                              "experimentally_verified 迁移。")
+    except Exception as e:
+        ledger_summary = {"error": str(e)[:120]}
     return {"ok": True, "result": {
         "path": path,
         "genes": len(m.genes),
@@ -80,6 +93,8 @@ def op_model_info(args):
         "boundary": n_boundary,
         "replicons": dict(repl),
         "objective": m.objective.name or m.objective.expression is not None and "set" or "None",
+        "ledger_summary": ledger_summary,
+        **({"ledger_context": ledger_context} if ledger_context else {}),
     }}
 
 
@@ -163,7 +178,7 @@ def op_phenotype_fix(args):
         return {"ok": False, "error": f"model file not found: {model}"}
     r = phenotype_fix(model, phenotype_table=args.get("phenotype_table"),
                       medium=args.get("medium"), max_add=args.get("max_add", 20),
-                      out=args.get("out"))
+                      out=args.get("out"), ledger_path=args.get("ledger_path"))
     return {"ok": True, "result": r}
 
 
@@ -175,7 +190,8 @@ def op_essential_scan(args):
     model = args.get("model")
     if not model or not os.path.exists(model):
         return {"ok": False, "error": f"model file not found: {model}"}
-    r = essential_scan(model, medium=args.get("medium"), gene_subset=args.get("gene_subset"))
+    r = essential_scan(model, medium=args.get("medium"), gene_subset=args.get("gene_subset"),
+                       ledger_path=args.get("ledger_path"))
     return {"ok": True, "result": r}
 
 
@@ -332,6 +348,35 @@ OPS["biomass_inspect"] = op_biomass_inspect
 OPS["biomass_apply"] = op_biomass_apply
 OPS["fluxscan"] = op_fluxscan
 OPS["sensitivity"] = op_sensitivity
+
+
+# ---------------------------------------------------------------------------
+# op: ledger — 阶段A-M3 prediction ledger（list/query/update；只读/追加/更新，不删行）
+# 默认账本 ~/.dsh/dsh-bio-gem/ledger/predictions.jsonl；ledger_path 可覆盖（测试用临时路径）
+# ---------------------------------------------------------------------------
+def op_ledger(args):
+    import ledger as _ledger
+    action = args.get("action", "list")
+    lp = args.get("ledger_path")
+    if action == "list":
+        return {"ok": True, "result": _ledger.query_ledger(
+            limit=args.get("limit"), offset=args.get("offset", 0), path=lp)}
+    if action == "query":
+        return {"ok": True, "result": _ledger.query_ledger(
+            rtype=args.get("type"), status=args.get("status"), condition=args.get("condition"),
+            model=args.get("model"), limit=args.get("limit"), offset=args.get("offset", 0),
+            path=lp)}
+    if action == "update":
+        r = _ledger.update_row(args.get("prediction_id"), status=args.get("status"),
+                               source_refs=args.get("source_refs"),
+                               comparison_refs=args.get("comparison_refs"), path=lp)
+        if r.get("ok"):
+            return {"ok": True, "result": r}
+        return {"ok": False, "error": r.get("error") or "update failed"}
+    return {"ok": False, "error": f"unknown ledger action: {action}（list|query|update）"}
+
+
+OPS["ledger"] = op_ledger
 
 
 def main():

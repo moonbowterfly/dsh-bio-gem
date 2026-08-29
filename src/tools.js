@@ -1,6 +1,6 @@
-// dsh-bio-gem — 工具层（defineTool 注册，14 语义化工具，2026-08-30 阶段A-M2 起）
+// dsh-bio-gem — 工具层（defineTool 注册，15 语义化工具，2026-08-30 阶段A-M3 起）
 // 全部执行走 python/gem_ops.py（JSON stdin 协议）或 build.py CLI（gem_build 长任务）。
-// op 与工具对照：13 op（含 l3_fix/fluxscan/sensitivity）+ build CLI；详见 docs/ARCHITECTURE.md §3。
+// op 与工具对照：14 op（含 l3_fix/fluxscan/sensitivity/ledger）+ build CLI；详见 docs/ARCHITECTURE.md §3。
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { join } from 'node:path'
 import { dirname, isAbsolute } from 'node:path'
@@ -99,8 +99,9 @@ export function registerTools(ctx) {
     description:
       '读取 SBML 代谢模型文件，输出模型摘要：基因/反应/代谢物/区室/复制子分布（多质粒/多染色体分离统计）、交换数。' +
       '用于快速检查模型文件是否可加载、规模、是否为多复制子。模型文件不存在或非有效 SBML 会明确报错。' +
+      '输出含 ledger_summary（预测账本基率摘要：total/by_status/by_type；可选 ledger_path 指向自定义账本）与基率披露语境。' +
       '触发词：看模型信息、模型摘要、有多少基因。',
-    parameters: { model: { type: 'string', required: true, description: 'SBML 文件绝对路径' } },
+    parameters: { model: { type: 'string', required: true, description: 'SBML 文件绝对路径' }, ledger_path: { type: 'string', description: '可选：预测账本 JSONL 路径（缺省 ~/.dsh/dsh-bio-gem/ledger/predictions.jsonl）' } },
     op: 'model_info',
   })))
 
@@ -366,9 +367,39 @@ export function registerTools(ctx) {
     timeoutMs: 3_600_000,
   })))
 
+  // gem_ledger：prediction ledger 预测账本（阶段A-M3：gem_essentiality/gem_phenotype 自动登记的预测可查询/更新/追踪）
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_ledger',
+    description:
+      '预测账本（prediction ledger）：gem_essentiality（每必需基因一条）与 gem_phenotype（每底物一条 G4 结果）' +
+      '自动登记的所有模型推导预测都在账本里（追加式 JSONL，幂等去重，同 model+condition+type+content 不重复入账）。' +
+      'action=list 分页列出（limit/offset，返回 total）；action=query 条件过滤（type/status/condition/model ' +
+      '前缀匹配，可组合）；action=update 按 prediction_id 改 status（unverified/literature_supported/' +
+      'literature_contradicted/experimentally_verified）/source_refs/comparison_refs（维护 updated_at）。' +
+      '只读/追加/更新，不删行；损坏行跳过并报 corrupt_rows 不阻塞。' +
+      '账本预测默认 status=unverified——实验或文献兑现前不应当作事实引用（基率披露见 gem_report 的 ledger_summary）。' +
+      '生长/通量数值为单点 FBA 口径（mmol/gDW/h）；条件间通量对比用 gem_fluxscan（区间制）。' +
+      '触发词：预测账本、查询预测、更新预测状态、预测追踪、ledger。',
+    parameters: {
+      action: { type: 'string', enum: ['list', 'query', 'update'], required: true, description: 'list=分页列出；query=条件过滤；update=改状态/来源' },
+      limit: { type: 'integer', description: 'list/query 分页大小' },
+      offset: { type: 'integer', description: 'list/query 分页偏移（默认 0）' },
+      type: { type: 'string', description: 'query 用：类型前缀过滤（essentiality/phenotype/synthetic_lethal/secretion/other）' },
+      status: { type: 'string', description: 'query 用：状态前缀过滤（unverified/literature_supported/literature_contradicted/experimentally_verified）' },
+      condition: { type: 'string', description: 'query 用：条件前缀过滤（如 AB）' },
+      model: { type: 'string', description: 'query 用：模型路径前缀过滤' },
+      prediction_id: { type: 'string', description: 'update 用：预测 ID（如 P0001）' },
+      source_refs: { type: 'array', items: { type: 'string' }, description: 'update 用：文献/实验来源引用列表' },
+      comparison_refs: { type: 'array', items: { type: 'string' }, description: 'update 用：对照记录引用' },
+      ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径（缺省 ~/.dsh/dsh-bio-gem/ledger/predictions.jsonl）' },
+    },
+    op: 'ledger',
+    timeoutMs: 60_000,
+  })))
+
   return () => disposers.forEach((d) => d())
 }
 
 export const gemToolNames = ['gem_report', 'gem_validate', 'gem_gapfind', 'gem_gapfill', 'gem_build',
   'gem_gapseq', 'gem_phenotype', 'gem_essentiality', 'gem_annotate', 'gem_media_resolve', 'gem_l3_fix',
-  'gem_biomass', 'gem_fluxscan', 'gem_sensitivity']
+  'gem_biomass', 'gem_fluxscan', 'gem_sensitivity', 'gem_ledger']
