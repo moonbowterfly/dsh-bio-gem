@@ -174,18 +174,26 @@ def status_gapseq():
     return {"state": "unknown", "rc": None, "log_tail": log_tail}
 
 
+def _win_to_mnt(path):
+    """Windows 路径 -> WSL /mnt 路径（cp 目标必须 /mnt/<盘>/...）。"""
+    p = path.replace("\\", "/")
+    if len(p) >= 2 and p[1] == ":":
+        return "/mnt/" + p[0].lower() + "/" + p[3:].lstrip("/")
+    return p
+
+
 def fetch_gapseq(work_win, name="model", log_tail=None):
     """doall 完成后把 WSL 产物拷回 Windows。返回 {model, files, wsl_out_ls, log_local}。"""
     work_dir = work_win or os.path.join(os.path.expanduser("~"), ".dsh", "dsh-bio-gem", "models")
     os.makedirs(work_dir, exist_ok=True)
     rc2, out2, err2 = wsl_run(f"ls {WSL_WORK}/ {WSL_WORK}/*.xml 2>/dev/null", 60)
     wsl_ls = out2[:400]
-    win_slash = work_dir.replace("\\", "/")
+    win_mnt = _win_to_mnt(work_dir)   # WSL 侧可写的 /mnt 目标
     wsl_run(
-        f"cp {WSL_WORK}/*.xml {WSL_WORK}/*.faa.gz {WSL_WORK}/*.tbl {win_slash}/ 2>/dev/null; "
-        f"cp {WSL_WORK}/doall.log {win_slash}/gapseq_doall.log 2>/dev/null", 180)
+        f"cp {WSL_WORK}/*.xml {WSL_WORK}/*.faa.gz {WSL_WORK}/*.tbl {WSL_WORK}/*.csv {win_mnt}/ 2>/dev/null; "
+        f"cp {WSL_WORK}/doall.log {win_mnt}/gapseq_doall.log 2>/dev/null", 180)
     files = [f for f in os.listdir(work_dir)
-             if f.endswith((".xml", ".faa.gz", ".tbl")) or f == "gapseq_doall.log"]
+             if f.endswith((".xml", ".faa.gz", ".tbl", ".csv")) or f == "gapseq_doall.log"]
     xmls = [f for f in files if f.endswith(".xml")]
     if not xmls:
         raise RuntimeError(f"gapseq 未产出 xml（WSL 目录: {wsl_ls}；日志尾部: {log_tail or ''}）")
