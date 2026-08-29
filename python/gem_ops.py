@@ -251,6 +251,34 @@ def op_fluxscan(args):
 
 
 # ---------------------------------------------------------------------------
+# op: sensitivity — 阶段A-M2 结构性灵敏度（GAM×biomass 网格 22 组合 + 必需性重扫 + 单组分漂移）
+# action=probe 秒级只读（GAM 载体定位/组分计数）；缺省 full=22 组合全量（约 35-45min，长任务）
+# ---------------------------------------------------------------------------
+def op_sensitivity(args):
+    from sensitivity import sensitivity, find_biomass_gam
+    model = args.get("model")
+    if not model or not os.path.exists(model):
+        return {"ok": False, "error": f"model file not found: {model}"}
+    if args.get("action") == "probe":
+        from silentio import silent_read_sbml
+        m = silent_read_sbml(model)
+        info = find_biomass_gam(m)
+        info["genes"] = len(m.genes)
+        info["reactions"] = len(m.reactions)
+        return {"ok": True, "result": info}
+    baseline_check = None
+    if args.get("baseline_check_path"):
+        with open(args["baseline_check_path"], encoding="utf-8") as f:
+            baseline_check = json.load(f)
+    return {"ok": True, "result": sensitivity(
+        model, medium=args.get("medium"),
+        biomass_scales=args.get("biomass_scales"), gam_grid=args.get("gam_grid"),
+        run_component_sensitivity=args.get("run_component_sensitivity", True),
+        run_drift=args.get("run_drift", True), top_n=args.get("top_n", 10),
+        export_csv=args.get("export_csv"), baseline_check=baseline_check)}
+
+
+# ---------------------------------------------------------------------------
 # 分发器
 # ---------------------------------------------------------------------------
 OPS = {
@@ -303,6 +331,7 @@ def op_biomass_apply(args):
 OPS["biomass_inspect"] = op_biomass_inspect
 OPS["biomass_apply"] = op_biomass_apply
 OPS["fluxscan"] = op_fluxscan
+OPS["sensitivity"] = op_sensitivity
 
 
 def main():

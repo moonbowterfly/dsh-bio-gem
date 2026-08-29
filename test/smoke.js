@@ -163,7 +163,7 @@ async function main() {
     bg?.error === 'budget_exceeded' && bg?.confirm_required === true, JSON.stringify(bg))
   const toolsSrc = readFileSync(join(REPO, 'src', 'tools.js'), 'utf8')
   const nReg = (toolsSrc.match(/ctx\.tools\.register\(/g) || []).length
-  check('tools: 13 个语义化工具注册', nReg === 13, `got ${nReg}`)
+  check('tools: 14 个语义化工具注册', nReg === 14, `got ${nReg}`)
 
   // 7) Q2 工程质量件：SBML 往返保真（GPR 防丢）+ 模型卡 v2 selftest
   const rt = await runPy('roundtrip_check.py', { model: C58 })
@@ -210,6 +210,27 @@ async function main() {
   check('fluxscan: 输出口径声明（units + fraction 0.9999）',
     fsx?.result?.units === 'mmol/gDW/h' && fsx?.result?.fraction_of_optimum === 0.9999,
     JSON.stringify({ units: fsx?.result?.units, f: fsx?.result?.fraction_of_optimum }))
+
+  // 9) M2 sensitivity：稳定性三分类 selftest + probe（GAM 载体定位，秒级）
+  const sensSelf = await new Promise((resolve, reject) => {
+    const cp = spawn(PY, ['-I', join(PYDIR, 'sensitivity.py'), '--selftest'], { cwd: PYDIR, windowsHide: true })
+    let o = ''
+    cp.stdout.on('data', (d) => { o += d })
+    cp.on('close', () => {
+      try { resolve(JSON.parse(o.trim().split(/\r?\n/).filter(Boolean).pop())) }
+      catch (e) { reject(new Error('sensitivity selftest parse fail: ' + o.slice(-200))) }
+    })
+    cp.on('error', reject)
+  })
+  check('sensitivity: 稳定性三分类 selftest（always/conditional/never）',
+    sensSelf?.ok === true && sensSelf?.result?.selftest === 'pass', JSON.stringify(sensSelf))
+  const sensProbe = await runPy('gem_ops.py', {
+    op: 'sensitivity', args: { model: C58, action: 'probe' },
+  })
+  check('sensitivity: probe 定位 GAM 载体（bio1 内部 stub，GAM_ORIG=40）',
+    sensProbe?.result?.biomass_rxn === 'bio1' && sensProbe?.result?.carrier_type === 'inside_biomass'
+    && Math.abs((sensProbe?.result?.gam_orig ?? 0) - 40.0) < 1e-6,
+    JSON.stringify(sensProbe?.result))
 
   console.log(`\n结果: ${passed} 通过 / ${failed} 失败`)
   process.exit(failed ? 1 : 0)

@@ -1,6 +1,6 @@
-// dsh-bio-gem — 工具层（defineTool 注册，13 语义化工具，2026-08-30 阶段A-M1 起）
+// dsh-bio-gem — 工具层（defineTool 注册，14 语义化工具，2026-08-30 阶段A-M2 起）
 // 全部执行走 python/gem_ops.py（JSON stdin 协议）或 build.py CLI（gem_build 长任务）。
-// op 与工具对照：12 op（含 l3_fix/fluxscan）+ build CLI；详见 docs/ARCHITECTURE.md §3。
+// op 与工具对照：13 op（含 l3_fix/fluxscan/sensitivity）+ build CLI；详见 docs/ARCHITECTURE.md §3。
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { join } from 'node:path'
 import { dirname, isAbsolute } from 'node:path'
@@ -338,9 +338,37 @@ export function registerTools(ctx) {
     timeoutMs: 900_000,
   })))
 
+  // gem_sensitivity：结构性灵敏度（阶段A-M2：GAM×biomass 网格 22 组合 + 稳定性三分类 + 单组分漂移）
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_sensitivity',
+    description:
+      '结构性灵敏度（sensitivity）：把"模型不确定"量化——biomass 组分系数 ×{0.75,1.0,1.25} × GAM {1,5,10,20,30,40,50} ' +
+      '= 21 扫点 + 1 基准组合（不扰动）= 22 组合全量（不抽样），每组合 wt 生长 + 必需性重扫（复用 essential_scan 的 ' +
+      'FVA 预筛+手工敲除逻辑）；输出稳定性三分类（always/conditionally/never essential）+ 单组分 ±25% 灵敏度 top10 ' +
+      '+ top10 必需性漂移（哪些基因从必需变非必需/新增必需）+ 模型卡"鲁棒性"章节（schema v3，无 card 不造卡）。' +
+      'GAM 载体自动定位（biomass 方程内 ATP stub 或独立 ATPM），biomass 扰动与 GAM 网格正交化。' +
+      '生长/必需性数值为单点 FBA 口径（mmol/gDW/h）；条件间通量对比用 gem_fluxscan（区间制）。' +
+      'action=probe 秒级只读探测（GAM 载体/组分计数）；缺省 full 全量约 35-45 分钟（后台长任务，耐心等待勿误判超时）。' +
+      '触发词：灵敏度分析、鲁棒性、GAM 扫描、biomass 不确定性、必需基因稳定性。',
+    parameters: {
+      action: { type: 'string', enum: ['probe', 'full'], description: 'probe=秒级只读（GAM 载体定位）；full=22 组合全量（默认缺省即 full，长任务）' },
+      model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
+      medium: { type: 'object', additionalProperties: true, description: '培养基：{"medium_name": "AB"}（默认）或自然名成分字典' },
+      biomass_scales: { type: 'array', items: { type: 'number' }, description: 'biomass 组分缩放轴（默认 [0.75, 1.0, 1.25]）' },
+      gam_grid: { type: 'array', items: { type: 'number' }, description: 'GAM 网格（默认 [1,5,10,20,30,40,50] mmol ATP/gDW）' },
+      run_component_sensitivity: { type: 'boolean', description: '二级单组分 ±25% 灵敏度（默认 true，~114 次 FBA）' },
+      run_drift: { type: 'boolean', description: 'top 敏感组分必需性重扫（默认 true，20 次×~55s）' },
+      top_n: { type: 'integer', description: '敏感组分 top N（默认 10）' },
+      export_csv: { type: 'string', description: '全量结果 CSV 落盘路径' },
+      baseline_check_path: { type: 'string', description: '可选：essential_scan 基线必需集 JSON 文件路径（基准组合做精确复现断言）' },
+    },
+    op: 'sensitivity',
+    timeoutMs: 3_600_000,
+  })))
+
   return () => disposers.forEach((d) => d())
 }
 
 export const gemToolNames = ['gem_report', 'gem_validate', 'gem_gapfind', 'gem_gapfill', 'gem_build',
   'gem_gapseq', 'gem_phenotype', 'gem_essentiality', 'gem_annotate', 'gem_media_resolve', 'gem_l3_fix',
-  'gem_biomass', 'gem_fluxscan']
+  'gem_biomass', 'gem_fluxscan', 'gem_sensitivity']

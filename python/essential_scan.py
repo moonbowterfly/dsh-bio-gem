@@ -2,6 +2,8 @@
 # 流程: 介质设置 -> FVA(全范围) 预筛可通量基因（死基因免敲）-> 手工单基因敲除
 #       -> 必需基因列表 + 模型卡章节数据（证据分级配色字段）
 # Windows 纪律: FVA processes=1（无 fork）；手工敲除循环；GLPK 快速线性
+# 阶段A-M2: 介质 setup 与扫描核心拆为 setup_model_medium/scan_essentiality 供 sensitivity 复用
+#           （行为不变，C58 AB 必需 155 锚点必须原样复现）
 import os
 import sys
 import time
@@ -15,10 +17,9 @@ EPS = 1e-6
 FVA_EPS = 1e-9
 
 
-def essential_scan(model_path, medium=None, gene_subset=None, progress=None):
-    """全量必需基因扫描。返回 {wt, total_genes, tested, essential, essential_genes,
-    predicted_viable, timeout_aborted, fva_seconds, knock_seconds}。"""
-    m = silent_read_sbml(model_path)
+def setup_model_medium(m, medium=None):
+    """介质 setup（对齐 validate G3）：expand_medium -> 全交换清零 -> resolve_medium 设 bounds。
+    阶段A-M2 抽出：essential_scan 与 sensitivity 共用同一介质口径。返回 (resolved, unresolved, preset)。"""
     med, preset = expand_medium(medium) if medium else ({}, None)
     resolved, unresolved = resolve_medium(m, med) if med else ({}, [])
     for r in m.reactions:
@@ -27,9 +28,17 @@ def essential_scan(model_path, medium=None, gene_subset=None, progress=None):
     for exid, lb in resolved.items():
         if exid in m.reactions:
             m.reactions.get_by_id(exid).lower_bound = lb
+    return resolved, unresolved, preset
+
+
+def scan_essentiality(m, gene_subset=None, progress=None):
+    """必需性扫描核心（阶段A-M2 抽出复用）。输入：介质 bounds 已设好的模型。
+    FVA(fraction=0) 预筛 -> 可通量反应关联基因 -> 手工敲除（<EPS 判必需）。
+    返回 {wt_growth, total_genes, fva_tested_reactions, active_reactions, tested_genes,
+    essential_count, essential_genes, organs, fva_seconds, knock_seconds}。"""
     with m:
         wt = m.optimize().objective_value
-    print(f"[scan] wt = {wt:.6f}; genes = {len(m.genes)}; medium_unresolved = {unresolved}", file=sys.stderr)
+    print(f"[scan] wt = {wt:.6f}; genes = {len(m.genes)}", file=sys.stderr)
 
     # 1) FVA 预筛（fraction_of_optimum=0 全范围）：无通量的反应关联基因免敲
     t0 = time.time()
@@ -60,7 +69,7 @@ def essential_scan(model_path, medium=None, gene_subset=None, progress=None):
             progress({"tested": len(cand_genes), "essential_so_far": len(essential)})
     knock_s = round(time.time() - t0, 1)
 
-    result = {
+    return {
         "wt_growth": round(wt, 6),
         "total_genes": len(m.genes),
         "fva_tested_reactions": len(fva),
@@ -71,10 +80,22 @@ def essential_scan(model_path, medium=None, gene_subset=None, progress=None):
         "organs": {"essential_count": len(essential), "viable_ratio": round(1 - len(essential)/max(1, len(cand_genes)), 4)},
         "fva_seconds": fva_s,
         "knock_seconds": knock_s,
+    }
+
+
+def essential_scan(model_path, medium=None, gene_subset=None, progress=None):
+    """全量必需基因扫描。返回 {wt, total_genes, tested, essential, essential_genes,
+    predicted_viable, timeout_aborted, fva_seconds, knock_seconds}。"""
+    m = silent_read_sbml(model_path)
+    resolved, unresolved, preset = setup_model_medium(m, medium)
+    print(f"[scan] medium_unresolved = {unresolved}", file=sys.stderr)
+
+    result = scan_essentiality(m, gene_subset=gene_subset, progress=progress)
+    result.update({
         "medium_preset": preset,
         "medium_unresolved": unresolved,
         "note": "必需判定=A 培养基下敲除生长<1e-6；evidence 分级按基因支撑反应是否含 EVIDENCE_math（Q2）",
-    }
+    })
     # 模型卡 schema v2 回写（产物旁已有 card 才写；无卡不凭空造卡）
     try:
         from model_card import load_card, set_essential_genes

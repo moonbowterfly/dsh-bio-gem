@@ -37,8 +37,9 @@ def save_card(model_path, card):
 
 
 def _ensure_v2(card):
-    """legacy 卡（build 直写，无 schema/lineage）即时迁移到 v2。"""
-    if card.get("schema") == SCHEMA and "model_lineage" in card:
+    """legacy 卡（build 直写，无 schema/lineage）即时迁移到 v2。
+    v3 卡（阶段A-M2 起，含 robustness 章节）视为已迁移，不降级。"""
+    if card.get("schema") in (SCHEMA, "v3") and "model_lineage" in card:
         return card
     card.setdefault("schema", SCHEMA)
     card.setdefault("growth_units", GROWTH_UNITS)
@@ -162,6 +163,38 @@ def set_essential_genes(model_path, scan_result, model=None):
     return card
 
 
+def set_robustness(model_path, sensitivity_result):
+    """sensitivity 结果写入 card.robustness（阶段A-M2：schema v3 起步，向后兼容 v2 卡只增字段）。
+    sensitivity_result: sensitivity() 返回（含 wt_growth_grid/stability/component_sensitivity/gam_carrier）。
+    无 card 返回 None（不凭空造卡——纪律同 set_essential_genes）。"""
+    card = load_card(model_path)
+    if card is None:
+        return None
+    _ensure_v2(card)
+    card["schema"] = "v3"  # v3 = v2 + robustness 章节（读取方按 JSON 字段访问，向后兼容）
+    grid = sensitivity_result.get("wt_growth_grid") or []
+    stab = sensitivity_result.get("stability") or {}
+    comp = (sensitivity_result.get("component_sensitivity") or {}).get("top_sensitive") or []
+    card["robustness"] = {
+        "units": GROWTH_UNITS,
+        "combinations": sensitivity_result.get("combinations"),
+        "baseline_reproduced": sensitivity_result.get("baseline_reproduced"),
+        "wt_growth_grid": [{"biomass": r.get("biomass"), "gam": r.get("gam"),
+                            "growth": r.get("growth"), "essential_count": r.get("essential_count")}
+                           for r in grid],
+        "stability": {"always_essential_count": len(stab.get("always_essential") or []),
+                      "always_essential": stab.get("always_essential") or [],
+                      "conditionally_essential_count": len(stab.get("conditionally_essential") or []),
+                      "conditionally_essential": stab.get("conditionally_essential") or [],
+                      "never_essential_count": stab.get("never_essential_count")},
+        "component_sensitivity_top": comp,
+        "gam_carrier": sensitivity_result.get("gam_carrier"),
+        "source": "gem_sensitivity", "updated_at": _now(),
+    }
+    save_card(model_path, card)
+    return card
+
+
 if __name__ == "__main__":
     import sys, tempfile
     # 自检（smoke 用，纯 JSON 层，秒级）：init → append ×2 → 版本递增 → phenotype/essential 形状
@@ -184,6 +217,18 @@ if __name__ == "__main__":
         assert back["verified_phenotypes"]["matched"] == 13
         assert back["essential_genes"]["count"] == 2
         assert back["essential_genes"]["genes"][0]["evidence_level"] == "high_confidence"
+        # 阶段A-M2：robustness 章节（v2→v3 只增字段）+ 无 card 不造卡
+        assert set_robustness(mp + ".nonexistent", {"wt_growth_grid": []}) is None
+        c4 = set_robustness(mp, {"combinations": 22, "baseline_reproduced": True,
+                                 "wt_growth_grid": [{"biomass": 1.0, "gam": 40.0, "growth": 0.519981,
+                                                     "essential_count": 155}],
+                                 "stability": {"always_essential": ["g1"], "conditionally_essential": [],
+                                               "never_essential_count": 0},
+                                 "component_sensitivity": {"top_sensitive": [{"component": "cpd00023_c0",
+                                                                             "delta_pct": -12.5}]},
+                                 "gam_carrier": {"type": "inside_biomass", "gam_orig": 40.0}})
+        assert c4["schema"] == "v3" and c4["robustness"]["combinations"] == 22
+        assert c4["essential_genes"]["count"] == 2 and c4["model_lineage"]["version"] == "0.1.2"
         # legacy 迁移
         legacy = {"name": "legacy", "engine": "carveme", "growth_g3_m9": 0.782}
         with open(card_path_for(mp), "w", encoding="utf-8") as f:
