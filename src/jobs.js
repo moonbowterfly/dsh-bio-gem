@@ -6,10 +6,14 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const ROOT = path.join(os.homedir(), '.dsh', 'dsh-bio-gem')
 const JOBS_DIR = path.join(ROOT, 'jobs')
-const PYTHON_DIR = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'python')
+// 阶段D-E2E 修复：new URL(...).pathname 在 Windows 产生 "/C:/..." 前导斜杠，
+// path.join 后得 "\C:\...python"（不存在）→ spawn ENOENT → gem_build 恒 "result missing"。
+// 与 python.js 同款写法：fileURLToPath + dirname。
+const PYTHON_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'python')
 
 // 运行时探测：优先 miniconda（本机分析环境，cobra 已装），回退 env GEM_PYTHON / PATH
 export function pythonExe() {
