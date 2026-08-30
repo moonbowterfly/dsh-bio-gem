@@ -179,6 +179,8 @@ def match_ex(sub, ex_idx, allow_substring=None):
     s = SYN.get((sub or "").strip().lower())
     if s and norm(s) in ex_idx:
         return ex_idx[norm(s)]
+    if allow_substring is None:
+        allow_substring = getattr(ex_idx, "allow_substring", True)
     a = CARVE_ALIAS.get(key)
     cands = a if isinstance(a, list) else [a]
     for a in cands:
@@ -186,6 +188,8 @@ def match_ex(sub, ex_idx, allow_substring=None):
             continue
         if a in ex_idx:
             return ex_idx[a]
+        if not allow_substring:
+            continue  # boundary 回退索引：alias 展开的模糊匹配同样禁用（防 G1P 冒充葡萄糖类误配）
         for n, rid in ex_idx.items():
             if n.startswith(a) or (("+" in a or len(a) >= 5) and a in n):
                 return rid
@@ -208,6 +212,8 @@ class BoundaryExIndex(dict):
     """两级策略②的 boundary 回退索引（阶段B）。
     仅当全模型无 EX_ 前缀交换反应时由 build_ex_index 产出；禁用受控子串回退层
     （跨命名空间误配实证：d-glucose ⊂ d-glucose1-phosphate）。"""
+    allow_substring = False
+    boundary_style = True
 
 
 def ex_index_is_boundary(ex_idx):

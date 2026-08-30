@@ -10,3 +10,6 @@ rxn_all.fa
 rxn_map.tsv
 *hits.tsv
 whitelist/
+
+# 阶段B-B2：基准对比报告本地留存（与白名单同族，不入 git）
+results/

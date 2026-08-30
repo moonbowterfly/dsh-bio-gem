@@ -260,16 +260,19 @@ def backfill_ledger(ledger_path, b_path, b_essential_set, b_degenerate, gene_map
                 evidence = {"b_substrate": sub, "b_predicted": brow["b_predicted"],
                             "b_growth": brow["b_growth"]}
         stats[verdict] += 1
-        entry = {"model_b": b_path, "verdict": verdict, "evidence": evidence, "at": now}
+        # 幂等：同 model_b 且 verdict/evidence 完全一致 -> 不更新不计数（时间戳不参与比较）
         old = row.get("comparison_refs") or []
+        if any(e.get("model_b") == b_path and e.get("verdict") == verdict
+               and e.get("evidence") == evidence for e in old):
+            continue
+        entry = {"model_b": b_path, "verdict": verdict, "evidence": evidence, "at": now}
         new_refs = [e for e in old if e.get("model_b") != b_path] + [entry]
-        if new_refs != old:  # 幂等：同内容不更新不计数
-            r = _ledger_mod.update_row(row.get("prediction_id"), comparison_refs=new_refs,
-                                       path=ledger_path)
-            if r.get("ok"):
-                stats["updated_rows"] += 1
-            else:
-                log(f"[bench] ledger update WARN {row.get('prediction_id')}: {r.get('error')}")
+        r = _ledger_mod.update_row(row.get("prediction_id"), comparison_refs=new_refs,
+                                   path=ledger_path)
+        if r.get("ok"):
+            stats["updated_rows"] += 1
+        else:
+            log(f"[bench] ledger update WARN {row.get('prediction_id')}: {r.get('error')}")
     return stats
 
 
