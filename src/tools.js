@@ -1,6 +1,6 @@
-// dsh-bio-gem — 工具层（defineTool 注册，16 语义化工具，2026-08-30 阶段B-B1 起）
+// dsh-bio-gem — 工具层（defineTool 注册，17 语义化工具，2026-08-30 阶段C-C1 起）
 // 全部执行走 python/gem_ops.py（JSON stdin 协议）或 build.py CLI（gem_build 长任务）。
-// op 与工具对照：15 op（含 l3_fix/fluxscan/sensitivity/ledger/benchmark）+ build CLI；详见 docs/ARCHITECTURE.md §3。
+// op 与工具对照：16 op（含 fluxscan/sensitivity/ledger/benchmark/secretion）+ build CLI；详见 docs/ARCHITECTURE.md §3。
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { join } from 'node:path'
 import { dirname, isAbsolute } from 'node:path'
@@ -432,9 +432,34 @@ export function registerTools(ctx) {
     timeoutMs: 1_200_000,
   })))
 
+  // gem_secretion：可分泌代谢物谱（阶段C-C1：production envelope 扫描，纯拓扑边界声明内置）
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_secretion',
+    description:
+      '可分泌代谢物谱（secretion）：对模型在指定介质下做 production envelope 扫描——候选=介质层两级策略导出的' +
+      '交换反应（EX_ 型与 boundary 型模型都适用），固定生长分数 {0.25,0.5,0.75,0.9,0.99,1.0} 下最大化产物交换，' +
+      '任一分数下产物交换 >1e-6 判可分泌。输出每候选 {met_id, name, max_prod, growth_at_max, feasible, envelope[...]}，' +
+      'export_csv 全量落盘。**边界声明：未考虑毒性/渗透压/调控，纯拓扑/线性规划结果**——可分泌≠实际会分泌。' +
+      '被测模型 wt<=EPS（介质下不生长，如 AB 预设对非根瘤菌模型）→ degenerate=true 不扫描不登记，提示介质适配。' +
+      '每个可分泌代谢物自动登记账本 type=secretion（幂等）。' +
+      '生长/通量数值为单点 FBA 口径（mmol/gDW/h）；条件间通量对比用 gem_fluxscan（区间制）。' +
+      '触发词：可分泌谱、分泌能力、secretion、能产什么、代谢物分泌。',
+    parameters: {
+      model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
+      medium: { type: 'object', additionalProperties: true, description: '分泌条件（缺省 {"medium_name": "AB"}）' },
+      fractions: { type: 'array', items: { type: 'number' }, description: '生长分数网格（默认 [0.25,0.5,0.75,0.9,0.99,1.0]）' },
+      export_csv: { type: 'string', description: '全量 envelope CSV 落盘路径' },
+      ledger_refs: { type: 'boolean', description: '可分泌代谢物登记账本（默认 true；幂等）' },
+      ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径' },
+    },
+    op: 'secretion',
+    timeoutMs: 900_000,
+  })))
+
+
   return () => disposers.forEach((d) => d())
 }
 
 export const gemToolNames = ['gem_report', 'gem_validate', 'gem_gapfind', 'gem_gapfill', 'gem_build',
   'gem_gapseq', 'gem_phenotype', 'gem_essentiality', 'gem_annotate', 'gem_media_resolve', 'gem_l3_fix',
-  'gem_biomass', 'gem_fluxscan', 'gem_sensitivity', 'gem_ledger', 'gem_benchmark']
+  'gem_biomass', 'gem_fluxscan', 'gem_sensitivity', 'gem_ledger', 'gem_benchmark', 'gem_secretion']

@@ -409,6 +409,24 @@ OPS["ledger"] = op_ledger
 OPS["benchmark"] = op_benchmark
 
 
+# ---------------------------------------------------------------------------
+# op: secretion — 阶段C-C1 可分泌代谢物谱（production envelope 扫描；纯拓扑边界声明内置；
+#     wt<=EPS 退化护栏不登记；type=secretion 账本登记幂等）
+# ---------------------------------------------------------------------------
+def op_secretion(args):
+    from secretion import secretion
+    model = args.get("model")
+    if not model or not os.path.exists(model):
+        return {"ok": False, "error": f"model file not found: {model}"}
+    return {"ok": True, "result": secretion(
+        model, medium=args.get("medium"), fractions=args.get("fractions"),
+        export_csv=args.get("export_csv"), ledger_refs=args.get("ledger_refs", True),
+        ledger_path=args.get("ledger_path"))}
+
+OPS["secretion"] = op_secretion
+
+
+
 def main():
     line = sys.stdin.read()
     try:

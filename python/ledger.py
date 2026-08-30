@@ -250,6 +250,28 @@ def register_phenotype(model_path, g4_results, condition=None, lineage_version=N
     return register_predictions(rows, path)
 
 
+def register_secretion(model_path, secretion_rows, condition=None,
+                       lineage_version=None, path=None):
+    """gem_secretion 自动登记：每个可分泌代谢物一条（type=secretion，status=unverified，
+    evidence_tier=EVIDENCE_math——production envelope 线性规划结果）。"""
+    rows = []
+    for r in secretion_rows or []:
+        rows.append({
+            "type": "secretion",
+            "content": (f"代谢物 {r.get('met_id')}({r.get('name') or ''}) 在 {condition} 下"
+                        f"模型预测可分泌（max_prod={r.get('max_prod')} mmol/gDW/h）"),
+            "model": model_path,
+            "model_lineage_version": lineage_version,
+            "condition": condition,
+            "evidence_tier": "EVIDENCE_math",
+            "status": "unverified",
+            "source_refs": [],
+            "comparison_refs": [],
+            "evidence_note": "production envelope 线性规划结果（纯拓扑），未考虑毒性/渗透压/调控",
+        })
+    return register_predictions(rows, path)
+
+
 if __name__ == "__main__":
     # 双协议（stdin / argv 文件）+ selftest（临时路径，全功能演示）
     if "--selftest" in sys.argv:

@@ -164,7 +164,7 @@ async function main() {
     bg?.error === 'budget_exceeded' && bg?.confirm_required === true, JSON.stringify(bg))
   const toolsSrc = readFileSync(join(REPO, 'src', 'tools.js'), 'utf8')
   const nReg = (toolsSrc.match(/ctx\.tools\.register\(/g) || []).length
-  check('tools: 16 个语义化工具注册', nReg === 16, `got ${nReg}`)
+  check('tools: 17 个语义化工具注册', nReg === 17, `got ${nReg}`)
 
   // 7) Q2 工程质量件：SBML 往返保真（GPR 防丢）+ 模型卡 v2 selftest
   const rt = await runPy('roundtrip_check.py', { model: C58 })
@@ -321,6 +321,33 @@ async function main() {
   const benchProto = await runPy('gem_ops.py', { op: 'benchmark', args: { model_a: 'NOPE.xml' } })
   check('benchmark: op 协议（model_a 不存在明确报错）',
     benchProto?.ok === false && /model_a file not found/.test(benchProto?.error || ''), JSON.stringify(benchProto))
+
+  // 13) 阶段C-C1：gem_secretion 可分泌谱（真实小用例 C58 ~23s + 退化护栏 + op 协议）
+  const secProto = await runPy('gem_ops.py', { op: 'secretion', args: {} })
+  check('secretion: op 协议（缺 model 明确报错）',
+    secProto?.ok === false && /model file not found/.test(secProto?.error || ''), JSON.stringify(secProto))
+  const tmpSecDir = mkdtempSync(join(tmpdir(), 'gem-smoke-sec-'))
+  const tmpSecLedger = join(tmpSecDir, 'predictions.jsonl')
+  const secC58 = await runPy('gem_ops.py', {
+    op: 'secretion',
+    args: { model: C58, medium: { medium_name: 'AB' }, ledger_path: tmpSecLedger },
+  })
+  check('secretion: C58 真实谱（85 可分泌，边界声明内置，H2O/CO2 可行）',
+    secC58?.result?.secretable_count === 85
+    && /未考虑毒性\/渗透压\/调控/.test(secC58?.result?.boundary_note || '')
+    && (secC58?.result?.results ?? []).some((r) => r.met_id === 'cpd00001_e0' && r.feasible)
+    && (secC58?.result?.results ?? []).some((r) => r.met_id === 'cpd00011_e0' && r.feasible),
+    JSON.stringify({ n: secC58?.result?.secretable_count, t: secC58?.result?.timing_seconds }))
+  check('secretion: 账本登记（85 条 type=secretion，幂等）',
+    secC58?.result?.ledger_registration?.appended === 85,
+    JSON.stringify(secC58?.result?.ledger_registration))
+  const degV4 = await runPy('gem_ops.py', {
+    op: 'secretion', args: { model: INX4, ledger_path: join(tmpSecDir, 'deg.jsonl') },
+  })
+  check('secretion: 退化护栏（v4 wt=0 -> degenerate=true 不扫描不登记）',
+    degV4?.result?.degenerate === true && degV4?.result?.results === undefined
+    && !existsSync(join(tmpSecDir, 'deg.jsonl')),
+    JSON.stringify(degV4?.result?.degenerate_note?.slice(0, 60)))
 
   console.log(`\n结果: ${passed} 通过 / ${failed} 失败`)
   process.exit(failed ? 1 : 0)
