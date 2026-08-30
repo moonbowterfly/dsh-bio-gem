@@ -95,22 +95,23 @@ def double_knockout(model_path, medium=None, max_pairs=5000, export_csv=None,
             pool.append((a, b, f"GPR先验(穷尽型or同工酶，反应:{','.join(sorted(rxns)[:3])})"))
             seen.add((a, b))
     n_prior = len(pool)
-    # ② 共享反应的存活基因对（确定性排序；超限截断）
+    # ② 共享反应的存活基因对（E4c 先验排序：共享活性反应数降序——冗余暴露越多 SL 先验越高，
+    #    字母序破平；max_pairs 截断从"字母序前 N"变为"先验驱动 top-N"）
     budget = max_pairs - n_prior
     scan_pairs_total = 0
     active_rxns = scan.get("active_rxn_ids") or []
     if budget > 0:
-        shared = set()
+        shared_count = {}
         for rid in sorted(active_rxns):
             gset = sorted(g for g in (x.id for x in m.reactions.get_by_id(rid).genes)
                           if g in alive)
             for a, b in combinations(gset, 2):
                 if (a, b) not in seen:
-                    shared.add((a, b))
-        shared = sorted(shared)
+                    shared_count[(a, b)] = shared_count.get((a, b), 0) + 1
+        shared = sorted(shared_count, key=lambda p: (-shared_count[p], p[0], p[1]))
         scan_pairs_total = len(shared)
         for a, b in shared[:budget]:
-            pool.append((a, b, "全扫(共享活性反应)"))
+            pool.append((a, b, f"全扫(共享活性反应×{shared_count[(a, b)]})"))
     truncated = scan_pairs_total > max(0, budget)
     log(f"[dk] pool: prior={n_prior} scan_total={scan_pairs_total} "
         f"scan_tested={min(scan_pairs_total, max(0, budget))} truncated={truncated}")
@@ -154,6 +155,7 @@ def double_knockout(model_path, medium=None, max_pairs=5000, export_csv=None,
         "alive_singles": len(alive),
         "pairs_tested": tested,
         "pairs_found": len(results),
+        "scan_ordering": "shared_rxn_count_desc_then_alpha (E4c)",
         "budget": {"prior_pairs": n_prior, "scan_pairs_total": scan_pairs_total,
                    "scan_pairs_tested": min(scan_pairs_total, max(0, budget)),
                    "truncated": truncated},

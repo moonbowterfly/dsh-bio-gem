@@ -1,6 +1,6 @@
 {
   "name": "dsh-bio-gem",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "基因组尺度代谢模型（GEM）构建插件：输入细菌全基因组（蛋白FASTA，支持多质粒/多染色体），自动构建+验证+补洞+出报告（SBML + 模型卡），供 dsh-bio-genie 消费工具加载使用 | Genome-scale metabolic model builder for dsh",
   "type": "module",
   "main": "index.js",
