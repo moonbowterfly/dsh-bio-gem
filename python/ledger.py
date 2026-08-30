@@ -24,7 +24,10 @@ def _now_iso():
 
 
 def _content_hash(model, condition, rtype, content):
-    raw = "\x1f".join([model or "", condition or "", rtype or "", content or ""])
+    # 阶段D-E2E P1：Windows 路径斜杠/大小写差异（"F:/a" vs "F:\a"）会使同一模型的
+    # 重复登记漏过去重——hash 前做 normcase+normpath 归一化（首登记的存储格式不变）。
+    m = os.path.normcase(os.path.normpath(model)) if model else ""
+    raw = "\x1f".join([m, condition or "", rtype or "", content or ""])
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -309,6 +312,9 @@ if __name__ == "__main__":
         # 幂等：同内容复跑不追加
         r2 = register_predictions([mk(1), mk(2), mk(3)], path=p)
         assert r2["appended"] == 0 and r2["skipped_duplicates"] == 3, r2
+        # 阶段D P1：model 路径斜杠/大小写不同但指向同一文件 -> 仍判重复
+        r2b = register_predictions([{**mk(1), "model": "f:\\m.XML"}], path=p)
+        assert r2b["appended"] == 0 and r2b["skipped_duplicates"] == 1, r2b
         # 新增一条 + ID 连续
         r3 = register_predictions([{**mk(4), "type": "phenotype",
                                     "content": "底物 Sucrose 预测不生长（文献=1，匹配=False）"}], path=p)
