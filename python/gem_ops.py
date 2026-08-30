@@ -391,7 +391,10 @@ def op_benchmark(args):
     from benchmark import benchmark
     model_a, model_b = args.get("model_a"), args.get("model_b")
     for k, v in (("model_a", model_a), ("model_b", model_b)):
-        if not v or not os.path.exists(v):
+        if not v:
+            return {"ok": False, "error": f"{k} required"}
+        if not v.startswith("bigg:") and not os.path.exists(v):
+            # bigg:<id> URI 由 benchmark 层下载解析（B3）；本地路径仍要求存在
             return {"ok": False, "error": f"{k} file not found: {v}"}
     return {"ok": True, "result": benchmark(
         model_a, model_b, medium=args.get("medium"),

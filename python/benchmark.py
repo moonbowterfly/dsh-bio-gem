@@ -382,14 +382,68 @@ def write_md(path, out):
 
 
 # ---------------------------------------------------------------------------
-# 主入口
+# B3：模型获取层最小版（bigg:<model_id> URI -> BiGG Models REST 下载；可选增强，失败如实报告不阻塞本地对比）
 # ---------------------------------------------------------------------------
+def fetch_bigg_model(model_id, dest_dir=None):
+    """从 BiGG 下载模型 SBML（B3 最小版）。
+    URL 策略（实测 2026-08-30）：静态库 http://bigg.ucsd.edu/static/models/<id>.xml 返回标准 SBML；
+    任务书给的 /api/v2/universal/models/<id>/download 实为 404（universal 是 reactions 命名空间），
+    /api/v2/models/<id>/download 返回 200 但内容是 BiGG JSON（非 SBML）——两者均不采用。
+    直连失败走本机代理 127.0.0.1:27890；都失败抛错（调用方如实报告，不阻塞本地对比）。"""
+    import urllib.request
+    import shutil
+    urls = [f"http://bigg.ucsd.edu/static/models/{model_id}.xml"]
+    dest_dir = dest_dir or os.path.join(os.path.expanduser("~"), ".dsh", "dsh-bio-gem", "models")
+    os.makedirs(dest_dir, exist_ok=True)
+    dest = os.path.join(dest_dir, f"bigg_{model_id}.xml")
+    if os.path.exists(dest) and os.path.getsize(dest) > 100000:
+        return dest, "cached（已有本地副本）"
+    last_err = None
+    for url in urls:
+        for tag, proxies in (("direct", None), ("proxy", {"http": "http://127.0.0.1:27890",
+                                                         "https": "http://127.0.0.1:27890"})):
+            try:
+                t0 = time.time()
+                req = urllib.request.Request(url, headers={"User-Agent": "dsh-bio-gem benchmark/1.0"})
+                opener = urllib.request.build_opener(urllib.request.ProxyHandler(proxies or {}))
+                with opener.open(req, timeout=120) as resp, open(dest + ".tmp", "wb") as f:
+                    shutil.copyfileobj(resp, f)
+                head = open(dest + ".tmp", "rb").read(100)
+                if not head.lstrip().startswith(b"<?xml"):
+                    raise ValueError(f"内容非 SBML XML（head={head[:40]!r}）")
+                os.replace(dest + ".tmp", dest)
+                return dest, (f"downloaded via {tag} ({os.path.getsize(dest)} bytes, {time.time() - t0:.1f}s)")
+            except Exception as e:
+                last_err = f"{type(e).__name__}: {str(e)[:200]}"
+                if os.path.exists(dest + ".tmp"):
+                    os.remove(dest + ".tmp")
+    raise RuntimeError(f"bigg download failed（直连+代理均失败）: {last_err}")
+
+
+def _resolve_model_arg(p):
+    """model_a/model_b 支持本地路径或 bigg:<model_id> URI。返回 (实际路径, fetch_note 或 None)。"""
+    if p and p.startswith("bigg:"):
+        path, how = fetch_bigg_model(p[5:].strip())
+        return path, how
+    return p, None
+
+
 def benchmark(model_a, model_b, medium=None, phenotype_table=None, reference_essential=None,
               essential_full=False, ledger_refs=True, export_md=None, ledger_path=None,
               progress=None):
     log = progress or (lambda s: sys.stderr.write(str(s) + "\n"))
     medium = medium or {"medium_name": "AB"}
     t0 = time.time()
+    fetch_notes = {}
+    for tag, p in (("a", model_a), ("b", model_b)):
+        resolved_p, how = _resolve_model_arg(p)
+        if how:
+            fetch_notes[tag] = {"arg": p, "resolved": resolved_p, "how": how}
+            log(f"[bench] model_{tag} fetch: {p} -> {resolved_p} ({how})")
+        if tag == "a":
+            model_a = resolved_p
+        else:
+            model_b = resolved_p
     log(f"[bench] A={model_a}")
     log(f"[bench] B={model_b}")
     log(f"[bench] medium={medium} essential_full={essential_full} ledger_refs={ledger_refs}")
@@ -450,6 +504,7 @@ def benchmark(model_a, model_b, medium=None, phenotype_table=None, reference_ess
 
     out = {
         "model_a": model_a, "model_b": model_b, "medium": medium,
+        **({"model_fetch": fetch_notes} if fetch_notes else {}),
         "id_systems": {"a": detect_id_system(silent_read_sbml(model_a)),
                        "b": detect_id_system(silent_read_sbml(model_b))},
         "gates": gates,
