@@ -420,6 +420,35 @@ def fetch_bigg_model(model_id, dest_dir=None):
     raise RuntimeError(f"bigg download failed（直连+代理均失败）: {last_err}")
 
 
+def medium_adaptation_hints(model_path, medium, max_hints=5, progress=None):
+    """阶段C-C5：B3 molybdate 式诊断自动化（通用函数）。介质下 wt<=EPS 时，在严格介质基础上
+    逐个补充模型其它交换反应（单变量 lb=-10 试验），报告能恢复生长的成分 -> '介质疑似缺 X'。"""
+    m = silent_read_sbml(model_path)
+    resolved, unresolved, preset = setup_model_medium(m, medium)
+    with m:
+        wt = m.optimize().objective_value
+    wt = round(float(wt), 6) if wt is not None else 0.0
+    if wt > EPS:
+        return {"applicable": False, "wt_growth": wt, "hints": [],
+                "note": "介质下可生长，无需适配诊断"}
+    cands = [r for r in m.reactions
+             if (r.id.startswith(("EX_", "DM_", "SK_")) or r.boundary) and r.id not in resolved]
+    hints = []
+    for r in sorted(cands, key=lambda x: x.id):
+        with m:
+            r.lower_bound = -10.0
+            v = m.slim_optimize()
+        if v is not None and v > EPS:
+            met = next(iter(r.metabolites))
+            hints.append({"exchange": r.id, "met_id": met.id, "name": met.name or "",
+                          "recovered_growth": round(float(v), 6)})
+            if len(hints) >= max_hints:
+                break
+    return {"applicable": True, "wt_growth": wt, "trials": len(cands), "hints": hints,
+            "note": ("在严格介质基础上逐个补充单一成分（lb=-10）能恢复生长的交换；"
+                     "多成分协同缺失不在本诊断范围（如 iNX1344 的 5 组分断供）")}
+
+
 def _resolve_model_arg(p):
     """model_a/model_b 支持本地路径或 bigg:<model_id> URI。返回 (实际路径, fetch_note 或 None)。"""
     if p and p.startswith("bigg:"):
@@ -484,6 +513,18 @@ def benchmark(model_a, model_b, medium=None, phenotype_table=None, reference_ess
     # ⑤⑥ 表型对比 + 可复现性
     pheno = phenotype_compare(model_a, model_b, medium, phenotype_table, log) \
         if phenotype_table and os.path.exists(phenotype_table) else None
+    hints_out = {}
+    for tag in ("a", "b"):
+        if growth[tag]["growth"] <= EPS:
+            try:
+                hints_out[tag] = medium_adaptation_hints(
+                    {"a": model_a, "b": model_b}[tag], medium)
+                log(f"[bench] medium_adaptation_hints {tag}: "
+                    f"{[h['met_id'] for h in hints_out[tag]['hints']]}")
+            except Exception as e:
+                log(f"[bench] hints {tag} WARN: {e}")
+    hints_out = hints_out or None
+
     repro = {tag: reproducibility(gate_reports[tag], probe[tag])
              for tag in ("a", "b")}
     if not has_ex_layer(silent_read_sbml(model_b)):
@@ -513,6 +554,7 @@ def benchmark(model_a, model_b, medium=None, phenotype_table=None, reference_ess
         "essentiality": ess,
         "phenotype": pheno,
         "reproducibility": repro,
+        **({"medium_adaptation_hints": hints_out} if hints_out else {}),
         "ledger_refs": bool(ledger_refs),
         "reference_essential": reference_essential,
         "reference_note": ("reference_essential 为文献值，仅并列标注（文献值 vs 本工具重算值），"

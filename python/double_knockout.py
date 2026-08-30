@@ -70,6 +70,11 @@ def double_knockout(model_path, medium=None, max_pairs=5000, export_csv=None,
         out["degenerate_note"] = (f"wt_growth={wt}<=EPS：被测模型在指定介质下不生长，双敲判定无意义，"
                                   "未扫描、未登记账本。提示：内置介质预设为根瘤菌科（C58）调校，"
                                   "非根瘤菌模型需先做介质适配（阶段B-B3 molybdate 教训）。")
+        try:
+            from benchmark import medium_adaptation_hints
+            out["medium_adaptation_hints"] = medium_adaptation_hints(model_path, medium)
+        except Exception as e:
+            sys.stderr.write(f"[dk] hints WARN: {type(e).__name__}: {e}" + "\n")
         log(f"[dk] DEGENERATE wt={wt} <= EPS：不扫描不登记")
         return out
 

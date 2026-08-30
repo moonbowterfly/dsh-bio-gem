@@ -72,6 +72,11 @@ def secretion(model_path, medium=None, fractions=None, export_csv=None,
         out["degenerate_note"] = (f"wt_growth={wt}<=EPS：被测模型在指定介质下不生长，production envelope 无意义，"
                                   "未扫描、未登记账本。提示：内置介质预设为根瘤菌科（C58）调校，非根瘤菌模型需先做介质适配"
                                   "（阶段B-B3 教训：iML1515 严格 AB 缺 molybdate）。")
+        try:
+            from benchmark import medium_adaptation_hints
+            out["medium_adaptation_hints"] = medium_adaptation_hints(model_path, medium)
+        except Exception as e:
+            sys.stderr.write(f"[secretion] hints WARN: {type(e).__name__}: {e}\n")
         log(f"[secretion] DEGENERATE wt={wt} <= EPS：不扫描不登记")
         return out
 

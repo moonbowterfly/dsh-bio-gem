@@ -23,6 +23,10 @@ language: mixed
 | 量化模型不确定性（biomass/GAM 扰动下预测稳不稳）| `gem_sensitivity`（22 组合网格+稳定性三分类+单组分漂移；action=probe 秒级探测）|
 | 查询/更新模型预测（必需性/表型预测追踪与实验兑现）| `gem_ledger`（list/query/update；预测默认 unverified，兑现后回填状态）|
 | 两个模型规范对比（论文级基准表）| `gem_benchmark`（model_a+model_b：六关并列/生长/biomass 断供探针/必需性对比[退化侧只报结构]/表型/账本回填；export_md 落盘）|
+| 看模型能产/能分泌什么（L1 拓扑）| `gem_secretion`（production envelope 扫描；边界声明=纯拓扑 LP 结果，可分泌≠会分泌）|
+| 找合成致死基因对（L2 非平凡预测）| `gem_double_knockout`（GPR 穷尽先验+全扫预算；假设生成供实验设计参考非结论）|
+| 必需基因的功能解读（哪些通路富集）| `gem_enrichment`（超几何+BH FDR；通路源=SBML groups[MetaCyc]；无注释如实兜底）|
+| 给实验/编辑工具出靶点清单 | `gem_targets`（账本三类预测 -> 锁定 schema CSV/JSON；引物设计不做）|
 | 用 Biolog/文献表型表校准模型（提升匹配率）| `gem_phenotype`（phenotype_table + medium；自动补 L1/L2）|
 | 把自然名培养基转成模型交换（消费方统一入口）| `gem_media_resolve`（model + medium → EX ID 列表）|
 | gapseq 质量重建（需 WSL2）| `gem_gapseq`：setup → launch →（循环 status 直到 done）→ fetch，agent 编排 |

@@ -4,7 +4,7 @@
 
 Genome-scale metabolic model builder for dsh: genome in, validated SBML out.
 
-## 工具（16）
+## 工具（20）
 
 | 工具 | 作用 | 状态 |
 |---|---|---|
@@ -24,6 +24,10 @@ Genome-scale metabolic model builder for dsh: genome in, validated SBML out.
 | `gem_sensitivity` | 结构性灵敏度（GAM×biomass 22 组合全量+稳定性三分类+单组分漂移+模型卡鲁棒性 v3）| ✅ C58 基准复现 155 |
 | `gem_ledger` | 预测账本（essentiality/phenotype 自动登记；幂等；list/query/update；基率追踪）| ✅ C58 155+19 条幂等复跑 |
 | `gem_benchmark` | 通用基准对比（两模型六关并列/生长/biomass 断供探针/必需性对比[退化护栏]/表型/账本回填；介质层两级策略；支持 bigg:&lt;id&gt; 下载）| ✅ B1 自检 C58 vs C58_P1；B2 C58 vs iNX1344_v4；B3 bigg:iML1515 |
+| `gem_secretion` | 可分泌代谢物谱（production envelope 扫描；边界声明=纯拓扑 LP；wt<=EPS 退化护栏）| ✅ C58: 182 候选 85 可分泌 |
+| `gem_double_knockout` | 双敲 v1 合成致死（GPR 穷尽先验+全扫预算；假设生成声明内置）| ✅ C58: Atu3364↔Atu4682 对应命中 |
+| `gem_enrichment` | 必需基因通路富集（超几何+BH FDR；通路源=SBML groups；无注释诚实兜底）| ✅ C58: 388 通路 55 显著 |
+| `gem_targets` | 靶点清单规范导出（账本三类 -> 锁定 schema CSV/JSON；计数闭合）| ✅ C58: 258 行三类闭合 |
 
 架构/决策见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/DECISIONS-2026-08-29.md](docs/DECISIONS-2026-08-29.md)。
 

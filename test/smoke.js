@@ -291,8 +291,8 @@ async function main() {
     && (mrC58?.result?.unresolved ?? []).length === 0,
     JSON.stringify({ bs: mrC58?.result?.boundary_style, n: mrC58?.result?.resolved_exchanges?.length }))
   const mrV4 = await runPy('gem_ops.py', { op: 'media_resolve', args: { model: INX4, medium: { medium_name: 'AB' } } })
-  check('介质两级策略: v4 boundary 回退启用（boundary_style=true，resolved>=10，含规范展示名）',
-    mrV4?.result?.boundary_style === true && (mrV4?.result?.resolved_exchanges ?? []).length >= 10
+  check('介质两级策略: v4 boundary 回退启用（boundary_style=true，resolved==15，含规范展示名）',
+    mrV4?.result?.boundary_style === true && (mrV4?.result?.resolved_exchanges ?? []).length === 15
     && (mrV4?.result?.resolved_display ?? []).some((s) => s.includes('boundary-derived')),
     JSON.stringify({ bs: mrV4?.result?.boundary_style, n: mrV4?.result?.resolved_exchanges?.length,
       sample: (mrV4?.result?.resolved_display ?? []).slice(0, 2) }))
