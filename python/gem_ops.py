@@ -372,7 +372,7 @@ def op_ledger(args):
         return {"ok": True, "result": _ledger.query_ledger(
             rtype=args.get("type"), status=args.get("status"), condition=args.get("condition"),
             model=args.get("model"), limit=args.get("limit"), offset=args.get("offset", 0),
-            path=lp)}
+            deprecated=args.get("deprecated"), path=lp)}
     if action == "update":
         r = _ledger.update_row(args.get("prediction_id"), status=args.get("status"),
                                source_refs=args.get("source_refs"),

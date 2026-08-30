@@ -256,11 +256,12 @@ async function main() {
     '{"corrupt line...\n',
   ].join('\n'))
   const miLedger = await runPy('gem_ops.py', { op: 'model_info', args: { model: C58P1, ledger_path: tmpLedger } })
-  check('gem_report: ledger_summary（2 行 + by_status/by_type + corrupt 1 不阻塞）',
+  check('gem_report: ledger_summary（2 行 + by_status/by_type + corrupt 1 不阻塞 + deprecated_count 字段）',
     miLedger?.result?.ledger_summary?.total === 2
     && miLedger?.result?.ledger_summary?.corrupt_rows === 1
     && miLedger?.result?.ledger_summary?.by_status?.unverified === 1
     && miLedger?.result?.ledger_summary?.by_status?.literature_supported === 1
+    && typeof miLedger?.result?.ledger_summary?.deprecated_count === 'number'
     && typeof miLedger?.result?.ledger_context === 'string',
     JSON.stringify(miLedger?.result?.ledger_summary))
   const ledUpdate = await runPy('gem_ops.py', { op: 'ledger', args: { action: 'update',

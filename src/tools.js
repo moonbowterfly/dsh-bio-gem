@@ -81,9 +81,10 @@ function buildTool() {
         await new Promise((r) => setTimeout(r, 2000))
         const st = jobStatus(job.jobId)
         if (st.done) {
-          if (st.error) throw new Error(`gem_build failed: ${st.error}`)
-          if (!st.result || st.result.ok === false) {
-            throw new Error(`gem_build failed: ${st.result?.error_hint ?? 'result missing'}`)
+          const d = st.detail ? ` | detail=${JSON.stringify(st.detail)}` : ''
+          if (st.error) throw new Error(`gem_build failed: ${st.error}${d}`)
+          if (!st.result || st.result.ok === false || st.result.result == null) {
+            throw new Error(`gem_build failed: ${st.result?.error_hint ?? st.error ?? 'result missing'}${d}`)
           }
           return st.result.result
         }

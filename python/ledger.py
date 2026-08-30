@@ -100,21 +100,75 @@ def register_predictions(new_rows, path=None):
 
 
 def query_ledger(rtype=None, status=None, condition=None, model=None,
-                 limit=None, offset=0, path=None):
-    """条件过滤（type/status/condition/model 前缀匹配、大小写不敏感、可组合）+ 分页。"""
+                 limit=None, offset=0, path=None, deprecated=None):
+    """条件过滤（type/status/condition/model 前缀匹配、大小写不敏感、可组合）+ 分页。
+    阶段D-P2：deprecated 过滤（True=仅打标行；False=仅未打标行；缺省=全部）。"""
     rows, corrupt = load_rows(path or LEDGER_PATH)
 
     def _pref(v, q):
         return str(v or "").lower().startswith(str(q).lower())
 
+    def _dep(r):
+        return bool(r.get("deprecated"))
+
     hits = [r for r in rows
             if (not rtype or _pref(r.get("type"), rtype))
             and (not status or _pref(r.get("status"), status))
             and (not condition or _pref(r.get("condition"), condition))
-            and (not model or _pref(r.get("model"), model))]
+            and (not model or _pref(r.get("model"), model))
+            and (deprecated is None or _dep(r) == bool(deprecated))]
     sliced = hits[offset:] if not limit else hits[offset:offset + limit]
     return {"total": len(rows), "matched": len(hits), "offset": offset,
             "results": sliced, "corrupt_rows": len(corrupt), "corrupt": corrupt}
+
+
+def mark_deprecated_duplicates(path=None, progress=None):
+    """阶段D-P2：跨斜杠风格重复打标（一次性运维用；不删行、不改既有字段）。
+    识别规则：同一归一化 content hash 的行组内，model 含反斜杠且存在正斜杠同预测 -> 打标
+    deprecated=true + superseded_by=<正斜杠版 prediction_id>。返回计数。"""
+    p = path or LEDGER_PATH
+    rows, corrupt = load_rows(p)
+    by_hash = {}
+    for r in rows:
+        h = _content_hash(r.get("model"), r.get("condition"), r.get("type"), r.get("content"))
+        by_hash.setdefault(h, []).append(r)
+    marks = {}
+    for group in by_hash.values():
+        if len(group) < 2:
+            continue
+        keepers = [r for r in group if "\\" not in (r.get("model") or "")]
+        dupes = [r for r in group if "\\" in (r.get("model") or "")]
+        if not keepers or not dupes:
+            continue
+        keeper = sorted(keepers, key=lambda r: r.get("prediction_id") or "")[0]
+        for d in dupes:
+            marks[d.get("prediction_id")] = keeper.get("prediction_id")
+    marked = 0
+    if marks:
+        with open(p, encoding="utf-8") as f:
+            lines = f.readlines()
+        with open(p, "w", encoding="utf-8", newline="") as f:
+            for line in lines:
+                stripped = line.strip()
+                try:
+                    obj = json.loads(stripped)
+                except Exception:
+                    f.write(line)  # 损坏行原样保留
+                    continue
+                pid = obj.get("prediction_id") if isinstance(obj, dict) else None
+                if pid in marks and not obj.get("deprecated"):
+                    obj["deprecated"] = True
+                    obj["deprecated_note"] = (f"Windows 路径斜杠风格重复；同预测见 "
+                                              f"prediction_id {marks[pid]}（正斜杠版）")
+                    obj["superseded_by"] = marks[pid]
+                    f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+                    marked += 1
+                else:
+                    f.write(line if line.endswith("\n") else line + "\n")
+    if progress:
+        progress(f"[ledger] marked {marked} deprecated rows (of {len(rows)})")
+    return {"path": p, "marked": marked, "rows_total": len(rows),
+            "corrupt_rows": len(corrupt)}
 
 
 def update_row(prediction_id, status=None, source_refs=None, comparison_refs=None, path=None):
@@ -164,16 +218,19 @@ def update_row(prediction_id, status=None, source_refs=None, comparison_refs=Non
 
 
 def ledger_summary(path=None):
-    """gem_report 摘要用：{total, by_status, by_type}；文件不存在 -> {total: 0}。"""
+    """gem_report 摘要用：{total, by_status, by_type, deprecated_count}；文件不存在 -> {total: 0}。"""
     rows, corrupt = load_rows(path or LEDGER_PATH)
     by_status, by_type = {}, {}
+    dep = 0
     for r in rows:
         s = r.get("status") or "unspecified"
         t = r.get("type") or "other"
         by_status[s] = by_status.get(s, 0) + 1
         by_type[t] = by_type.get(t, 0) + 1
+        if r.get("deprecated"):
+            dep += 1
     return {"total": len(rows), "by_status": by_status, "by_type": by_type,
-            "corrupt_rows": len(corrupt)}
+            "deprecated_count": dep, "corrupt_rows": len(corrupt)}
 
 
 # ---------------------------------------------------------------------------
@@ -344,7 +401,26 @@ if __name__ == "__main__":
         update_row("P0002", status="literature_supported", path=p)
         rows2, corrupt2 = load_rows(p)
         assert len(corrupt2) == 1 and len(rows2) == 4, (corrupt2, rows2)
-        print(json.dumps({"ok": True, "result": {"selftest": "pass", "summary": s}}))
+        # 阶段D-P2：直写一条反斜杠 model 的历史态重复行（模拟归一化修复前的存量），
+        # mark_deprecated_duplicates 打标（不删行）+ query 过滤 + summary deprecated_count
+        n_before = len(load_rows(p)[0])
+        with open(p, "a", encoding="utf-8") as f:
+            hist = dict(mk(1))
+            hist["model"] = "f:\\m.xml"  # 同预测、反斜杠风格（历史态）
+            f.write(json.dumps(hist, ensure_ascii=False) + "\n")
+        mk_res = mark_deprecated_duplicates(path=p)
+        assert mk_res["marked"] == 1, mk_res
+        rows3, _ = load_rows(p)
+        assert len(rows3) == n_before + 1  # 不删行：仅 +1 条历史行
+        dep_rows = [r for r in rows3 if r.get("deprecated")]
+        assert len(dep_rows) == 1 and dep_rows[0]["superseded_by"] == "P0001", dep_rows
+        q_dep = query_ledger(deprecated=True, path=p)
+        assert q_dep["matched"] == 1
+        q_ok = query_ledger(deprecated=False, rtype="essentiality", path=p)
+        assert q_ok["matched"] == 3  # 原始 3 条 essentiality 不受影响
+        s3 = ledger_summary(path=p)
+        assert s3["deprecated_count"] == 1 and s3["total"] == n_before + 1, s3
+        print(json.dumps({"ok": True, "result": {"selftest": "pass", "summary": s3}}))
     else:
         args = {}
         if len(sys.argv) > 1:

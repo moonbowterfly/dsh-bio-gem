@@ -100,6 +100,24 @@ export function readProgress(jobId) {
   }
 }
 
+// 阶段D-P2：失败透明化——job 目录内容摘要 + stderr 尾部（成功路径不计算不返回）
+function jobDetail(jobDir) {
+  let files = []
+  try {
+    files = fs.readdirSync(jobDir).map((f) => {
+      let bytes = 0
+      try { bytes = fs.statSync(path.join(jobDir, f)).size } catch { /* ignore */ }
+      return { name: f, bytes }
+    })
+  } catch { /* ignore */ }
+  let stderr_tail = ''
+  try {
+    const sp = path.join(jobDir, 'stderr.txt')
+    if (fs.existsSync(sp)) stderr_tail = fs.readFileSync(sp, 'utf8').slice(-400)
+  } catch { /* ignore */ }
+  return { job_dir: jobDir, job_dir_files: files, stderr_tail }
+}
+
 // 轻量 in-memory 任务视图（进程存活期）；磁盘持久视图用 readProgress/result.json
 export function jobStatus(jobId) {
   const m = jobs.get(jobId)
@@ -123,8 +141,12 @@ export function jobStatus(jobId) {
     error = fs.existsSync(stderr) ? fs.readFileSync(stderr, 'utf8').slice(-800) : 'job vanished'
     done = true
   }
+  // build.py 失败信封：{ok:true, result:null, error_hint}（exit 0）——也按失败透出 detail
+  const envelopeFailed = !!(result && result.error_hint && result.result == null)
+  const failed = !!error || envelopeFailed || (done && code !== 0 && !result)
   return {
     jobId, done, code, result, error, lastEvent: last, events, jobDir,
+    ...(failed ? { detail: jobDetail(jobDir) } : {}),
     elapsed_ms: Date.now() - (m ? m.started : Date.now()),
   }
 }
