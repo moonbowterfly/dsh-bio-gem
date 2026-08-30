@@ -164,7 +164,7 @@ async function main() {
     bg?.error === 'budget_exceeded' && bg?.confirm_required === true, JSON.stringify(bg))
   const toolsSrc = readFileSync(join(REPO, 'src', 'tools.js'), 'utf8')
   const nReg = (toolsSrc.match(/ctx\.tools\.register\(/g) || []).length
-  check('tools: 19 个语义化工具注册', nReg === 19, `got ${nReg}`)
+  check('tools: 20 个语义化工具注册', nReg === 20, `got ${nReg}`)
 
   // 7) Q2 工程质量件：SBML 往返保真（GPR 防丢）+ 模型卡 v2 selftest
   const rt = await runPy('roundtrip_check.py', { model: C58 })
@@ -378,6 +378,24 @@ async function main() {
   check('enrichment: 无注释模型兜底（iML1515 annotation_unavailable=true 不伪造通路）',
     enrIm?.result?.annotation_unavailable === true && enrIm?.result?.groups_found === 0,
     JSON.stringify(enrIm?.result?.note?.slice(0, 50)))
+
+  // 16) 阶段C-C4：gem_targets 靶点规范导出（真实账本三类闭合 + schema）
+  const tgt = await runPy('gem_ops.py', {
+    op: 'targets',
+    args: { model: C58, export_path: join(tmpSecDir, 'targets.csv') },
+  })
+  check('targets: 三类导出与账本计数闭合（155/18/85 全 closed=true）',
+    tgt?.result?.exported_count === 258
+    && Object.values(tgt?.result?.count_closure ?? {}).every((c) => c.closed === true)
+    && tgt?.result?.schema_fields?.length >= 8,
+    JSON.stringify(tgt?.result?.count_closure))
+  check('targets: schema 行样例（三类各 >=1 行，target_id T0001 递增，source 带账本 ID）',
+    (tgt?.result?.rows ?? []).filter((r) => r.type === 'essentiality').length >= 1
+    && (tgt?.result?.rows ?? []).filter((r) => r.type === 'synthetic_lethal').length >= 1
+    && (tgt?.result?.rows ?? []).filter((r) => r.type === 'secretion').length >= 1
+    && tgt?.result?.rows?.[0]?.target_id === 'T0001'
+    && /^ledger:P\d+$/.test(tgt?.result?.rows?.[0]?.source || ''),
+    JSON.stringify(tgt?.result?.rows?.[0]))
 
   console.log(`\n结果: ${passed} 通过 / ${failed} 失败`)
   process.exit(failed ? 1 : 0)

@@ -461,6 +461,21 @@ def op_enrichment(args):
 OPS["enrichment"] = op_enrichment
 
 
+# ---------------------------------------------------------------------------
+# op: targets — 阶段C-C4 靶点清单规范导出（账本三类预测 -> 锁定 schema；供下游引物/编辑
+#     工具直接输入；与账本计数闭合；引物/质粒设计本身不做）
+# ---------------------------------------------------------------------------
+def op_targets(args):
+    from targets import targets
+    return {"ok": True, "result": targets(
+        model_path=args.get("model"), types=args.get("types"), condition=args.get("condition"),
+        ledger_path=args.get("ledger_path"), export_format=args.get("export_format", "csv"),
+        export_path=args.get("export_path"))}
+
+
+OPS["targets"] = op_targets
+
+
 
 def main():
     line = sys.stdin.read()

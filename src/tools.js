@@ -1,6 +1,6 @@
-// dsh-bio-gem — 工具层（defineTool 注册，19 语义化工具，2026-08-30 阶段C-C3 起）
+// dsh-bio-gem — 工具层（defineTool 注册，20 语义化工具，2026-08-30 阶段C-C4 起）
 // 全部执行走 python/gem_ops.py（JSON stdin 协议）或 build.py CLI（gem_build 长任务）。
-// op 与工具对照：18 op（含 fluxscan/sensitivity/ledger/benchmark/secretion/double_knockout/enrichment）+ build CLI；详见 docs/ARCHITECTURE.md §3。
+// op 与工具对照：19 op（含 fluxscan/sensitivity/ledger/benchmark/secretion/double_knockout/enrichment/targets）+ build CLI；详见 docs/ARCHITECTURE.md §3。
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { join } from 'node:path'
 import { dirname, isAbsolute } from 'node:path'
@@ -501,6 +501,28 @@ export function registerTools(ctx) {
     timeoutMs: 300_000,
   })))
 
+  // gem_targets：靶点清单规范导出（阶段C-C4：账本三类预测 -> 锁定 schema，供下游引物/编辑工具直接输入）
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_targets',
+    description:
+      '靶点清单规范导出（targets）：把账本中的 essentiality/synthetic_lethal/secretion 预测汇总为下游' +
+      '引物/编辑工具可直接输入的规范 schema——每行锁定 11 字段：target_id(T0001 递增)/type/genes/met_ids/' +
+      'condition/rationale/evidence_tier/status/growth_or_maxprod/source(ledger:P####)/exported_at。' +
+      'essential 默认读账本不重扫；types 可筛选（essential=essentiality/全部）；可选 condition 过滤；' +
+      'export_format=csv（默认，utf-8-sig）/json；与账本计数闭合（exported==ledger per type）。' +
+      '引物/质粒设计本身不做（方案文件明确）。触发词：靶点清单、导出靶点、targets、基因编辑靶点、引物输入。',
+    parameters: {
+      model: { type: 'string', description: '可选：模型路径过滤（精确匹配优先，退化为文件名匹配）' },
+      types: { type: 'array', items: { type: 'string' }, description: '类型筛选（essential/synthetic_lethal/secretion；缺省全部三类）' },
+      condition: { type: 'string', description: '可选：条件过滤（精确匹配，如 AB）' },
+      export_format: { type: 'string', enum: ['csv', 'json'], description: '导出格式（默认 csv）' },
+      export_path: { type: 'string', description: '落盘路径（缺省 ~/.dsh/dsh-bio-gem/exports/targets_<ts>.<ext>）' },
+      ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径' },
+    },
+    op: 'targets',
+    timeoutMs: 120_000,
+  })))
+
 
   return () => disposers.forEach((d) => d())
 }
@@ -508,4 +530,4 @@ export function registerTools(ctx) {
 export const gemToolNames = ['gem_report', 'gem_validate', 'gem_gapfind', 'gem_gapfill', 'gem_build',
   'gem_gapseq', 'gem_phenotype', 'gem_essentiality', 'gem_annotate', 'gem_media_resolve', 'gem_l3_fix',
   'gem_biomass', 'gem_fluxscan', 'gem_sensitivity', 'gem_ledger', 'gem_benchmark', 'gem_secretion',
-  'gem_double_knockout', 'gem_enrichment']
+  'gem_double_knockout', 'gem_enrichment', 'gem_targets']
