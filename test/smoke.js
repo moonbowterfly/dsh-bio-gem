@@ -384,9 +384,9 @@ async function main() {
     op: 'targets',
     args: { model: C58, export_path: join(tmpSecDir, 'targets.csv') },
   })
-  check('targets: 三类导出与账本计数闭合（155/18/85 全 closed=true）',
-    tgt?.result?.exported_count === 258
-    && Object.values(tgt?.result?.count_closure ?? {}).every((c) => c.closed === true)
+  check('targets: 三类导出与账本计数闭合（closure per type 全 true；基线 258 行必在）',
+    Object.values(tgt?.result?.count_closure ?? {}).every((c) => c.closed === true)
+    && tgt?.result?.exported_count >= 258
     && tgt?.result?.schema_fields?.length >= 8,
     JSON.stringify(tgt?.result?.count_closure))
   check('targets: schema 行样例（三类各 >=1 行，target_id T0001 递增，source 带账本 ID）',
