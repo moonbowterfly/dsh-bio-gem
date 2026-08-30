@@ -164,7 +164,7 @@ async function main() {
     bg?.error === 'budget_exceeded' && bg?.confirm_required === true, JSON.stringify(bg))
   const toolsSrc = readFileSync(join(REPO, 'src', 'tools.js'), 'utf8')
   const nReg = (toolsSrc.match(/ctx\.tools\.register\(/g) || []).length
-  check('tools: 18 个语义化工具注册', nReg === 18, `got ${nReg}`)
+  check('tools: 19 个语义化工具注册', nReg === 19, `got ${nReg}`)
 
   // 7) Q2 工程质量件：SBML 往返保真（GPR 防丢）+ 模型卡 v2 selftest
   const rt = await runPy('roundtrip_check.py', { model: C58 })
@@ -361,6 +361,23 @@ async function main() {
     degDk?.result?.degenerate === true && degDk?.result?.results === undefined
     && !existsSync(join(tmpSecDir, 'dk.jsonl')),
     JSON.stringify(degDk?.result?.degenerate_note?.slice(0, 60)))
+
+  // 15) 阶段C-C3：gem_enrichment 通路富集（真实 C58 ~3s + 无注释兜底）
+  const enr = await runPy('gem_ops.py', {
+    op: 'enrichment', args: { model: C58, export_csv: join(tmpSecDir, 'enr.csv') },
+  })
+  check('enrichment: C58 真实富集（通路注释可用，388 通路，FDR 字段存在，肽聚糖/TCA 类核心通路在列）',
+    enr?.result?.annotation_unavailable === false
+    && enr?.result?.pathways_tested === 388
+    && (enr?.result?.results ?? []).every((r) => typeof r.p_value === 'number' && typeof r.fdr === 'number')
+    && (enr?.result?.results ?? []).some((r) => r.pathway.includes('PEPTIDOGLYCANSYN')),
+    JSON.stringify({ tested: enr?.result?.pathways_tested, sig: enr?.result?.significant_count_fdr05 }))
+  const enrIm = await runPy('gem_ops.py', {
+    op: 'enrichment', args: { model: 'C:/Users/shuai/.dsh/dsh-bio-gem/models/bigg_iML1515.xml' },
+  })
+  check('enrichment: 无注释模型兜底（iML1515 annotation_unavailable=true 不伪造通路）',
+    enrIm?.result?.annotation_unavailable === true && enrIm?.result?.groups_found === 0,
+    JSON.stringify(enrIm?.result?.note?.slice(0, 50)))
 
   console.log(`\n结果: ${passed} 通过 / ${failed} 失败`)
   process.exit(failed ? 1 : 0)

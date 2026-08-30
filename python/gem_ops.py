@@ -444,6 +444,23 @@ def op_double_knockout(args):
 OPS["double_knockout"] = op_double_knockout
 
 
+# ---------------------------------------------------------------------------
+# op: enrichment — 阶段C-C3 必需基因通路富集（超几何单侧 + BH FDR；通路源=SBML groups
+#     [gapseq MetaCyc PWY]；无注释模型按契约 annotation_unavailable 兜底；不登记账本）
+# ---------------------------------------------------------------------------
+def op_enrichment(args):
+    from enrichment import enrichment
+    model = args.get("model")
+    if not model or not os.path.exists(model):
+        return {"ok": False, "error": f"model file not found: {model}"}
+    return {"ok": True, "result": enrichment(
+        model, gene_list=args.get("gene_list"), pathway_source=args.get("pathway_source"),
+        ledger_path=args.get("ledger_path"), export_csv=args.get("export_csv"))}
+
+
+OPS["enrichment"] = op_enrichment
+
+
 
 def main():
     line = sys.stdin.read()

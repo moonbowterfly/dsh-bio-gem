@@ -1,6 +1,6 @@
-// dsh-bio-gem — 工具层（defineTool 注册，18 语义化工具，2026-08-30 阶段C-C2 起）
+// dsh-bio-gem — 工具层（defineTool 注册，19 语义化工具，2026-08-30 阶段C-C3 起）
 // 全部执行走 python/gem_ops.py（JSON stdin 协议）或 build.py CLI（gem_build 长任务）。
-// op 与工具对照：17 op（含 fluxscan/sensitivity/ledger/benchmark/secretion/double_knockout）+ build CLI；详见 docs/ARCHITECTURE.md §3。
+// op 与工具对照：18 op（含 fluxscan/sensitivity/ledger/benchmark/secretion/double_knockout/enrichment）+ build CLI；详见 docs/ARCHITECTURE.md §3。
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { join } from 'node:path'
 import { dirname, isAbsolute } from 'node:path'
@@ -480,6 +480,27 @@ export function registerTools(ctx) {
     timeoutMs: 1_200_000,
   })))
 
+  // gem_enrichment：必需基因通路富集（阶段C-C3：超几何+BH FDR；通路源=SBML groups[MetaCyc PWY]）
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_enrichment',
+    description:
+      '必需基因通路富集（enrichment）：对基因列表（缺省从账本读该模型 essentiality 预测）做通路超几何单侧富集检验' +
+      '+ Benjamini-Hochberg FDR 校正。通路注释源=模型的 SBML groups（gapseq 重建自带 MetaCyc PWY 分组）；' +
+      '模型无 groups 注释时按契约返回 annotation_unavailable（不伪造通路，附可补途径说明）；' +
+      '有效映射基因 <10 如实声明统计功效有限。输出 {pathway, genes_hit, background_hit, total_bg, p_value, fdr, ' +
+      'fold_enrichment, ...} 全表 + export_csv。统计描述性结果，不登记账本，不做跨模型对比。' +
+      '触发词：通路富集、必需基因富集、enrichment、哪些通路富集。',
+    parameters: {
+      model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
+      gene_list: { type: 'array', items: { type: 'string' }, description: '可选：基因列表（缺省从账本 essentiality 预测读取）' },
+      pathway_source: { type: 'string', description: '通路注释源（缺省 groups=SBML groups）' },
+      export_csv: { type: 'string', description: '富集表 CSV 落盘路径' },
+      ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径（gene_list 缺省来源）' },
+    },
+    op: 'enrichment',
+    timeoutMs: 300_000,
+  })))
+
 
   return () => disposers.forEach((d) => d())
 }
@@ -487,4 +508,4 @@ export function registerTools(ctx) {
 export const gemToolNames = ['gem_report', 'gem_validate', 'gem_gapfind', 'gem_gapfill', 'gem_build',
   'gem_gapseq', 'gem_phenotype', 'gem_essentiality', 'gem_annotate', 'gem_media_resolve', 'gem_l3_fix',
   'gem_biomass', 'gem_fluxscan', 'gem_sensitivity', 'gem_ledger', 'gem_benchmark', 'gem_secretion',
-  'gem_double_knockout']
+  'gem_double_knockout', 'gem_enrichment']
