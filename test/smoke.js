@@ -164,7 +164,7 @@ async function main() {
     bg?.error === 'budget_exceeded' && bg?.confirm_required === true, JSON.stringify(bg))
   const toolsSrc = readFileSync(join(REPO, 'src', 'tools.js'), 'utf8')
   const nReg = (toolsSrc.match(/ctx\.tools\.register\(/g) || []).length
-  check('tools: 15 个语义化工具注册', nReg === 15, `got ${nReg}`)
+  check('tools: 16 个语义化工具注册', nReg === 16, `got ${nReg}`)
 
   // 7) Q2 工程质量件：SBML 往返保真（GPR 防丢）+ 模型卡 v2 selftest
   const rt = await runPy('roundtrip_check.py', { model: C58 })
@@ -283,6 +283,44 @@ async function main() {
     && deg?.result?.ledger_registration?.skipped_degraded === 1066
     && !existsSync(tmpDegLedger),
     JSON.stringify(deg?.result?.ledger_registration))
+
+  // 12) 阶段B-B1：介质两级策略（C58 零影响 + v4 boundary 回退）+ gem_benchmark 自检用例
+  const mrC58 = await runPy('gem_ops.py', { op: 'media_resolve', args: { model: C58, medium: { medium_name: 'AB' } } })
+  check('介质两级策略: C58 boundary_style=false（零影响硬保证）且 20 EX/0 unresolved',
+    mrC58?.result?.boundary_style === false && (mrC58?.result?.resolved_exchanges ?? []).length === 20
+    && (mrC58?.result?.unresolved ?? []).length === 0,
+    JSON.stringify({ bs: mrC58?.result?.boundary_style, n: mrC58?.result?.resolved_exchanges?.length }))
+  const mrV4 = await runPy('gem_ops.py', { op: 'media_resolve', args: { model: INX4, medium: { medium_name: 'AB' } } })
+  check('介质两级策略: v4 boundary 回退启用（boundary_style=true，resolved>=10，含规范展示名）',
+    mrV4?.result?.boundary_style === true && (mrV4?.result?.resolved_exchanges ?? []).length >= 10
+    && (mrV4?.result?.resolved_display ?? []).some((s) => s.includes('boundary-derived')),
+    JSON.stringify({ bs: mrV4?.result?.boundary_style, n: mrV4?.result?.resolved_exchanges?.length,
+      sample: (mrV4?.result?.resolved_display ?? []).slice(0, 2) }))
+  const benchSelf = await runPy('gem_ops.py', {
+    op: 'benchmark',
+    args: { model_a: C58, model_b: C58P1, medium: { medium_name: 'AB' },
+            phenotype_table: 'D:/Program/hermes/temp/gem_test_phenotype.tsv',
+            ledger_refs: false },
+  })
+  const bs = benchSelf?.result ?? {}
+  const bSuc = (bs.phenotype?.table ?? []).find((r) => r.substrate === 'Sucrose')
+  check('benchmark 自检 C58 vs C58_P1: 反应差方向正确（P1 多 7: 2492>2485）',
+    bs?.reproducibility?.a?.reactions === 2485 && bs?.reproducibility?.b?.reactions === 2492,
+    JSON.stringify({ a: bs?.reproducibility?.a?.reactions, b: bs?.reproducibility?.b?.reactions }))
+  check('benchmark 自检: 蔗糖条件生长差已知方向（A sole 0 vs B 0.97077）',
+    bSuc && bSuc.a_predicted === 0 && Math.abs((bSuc.b_growth ?? 0) - 0.97077) < 0.01,
+    JSON.stringify(bSuc))
+  check('benchmark 自检: 必需性一致（a_count==b_count 且 a_only/b_only 均空，映射 identity 覆盖 1.0）',
+    bs?.essentiality?.a_count === bs?.essentiality?.b_count
+    && (bs?.essentiality?.a_only ?? ['x']).length === 0
+    && (bs?.essentiality?.b_only ?? ['x']).length === 0
+    && bs?.essentiality?.mapping?.coverage_ratio === 1.0,
+    JSON.stringify({ a: bs?.essentiality?.a_count, b: bs?.essentiality?.b_count,
+      ao: bs?.essentiality?.a_only?.length, bo: bs?.essentiality?.b_only?.length,
+      cov: bs?.essentiality?.mapping?.coverage_ratio }))
+  const benchProto = await runPy('gem_ops.py', { op: 'benchmark', args: { model_a: 'NOPE.xml' } })
+  check('benchmark: op 协议（model_a 不存在明确报错）',
+    benchProto?.ok === false && /model_a file not found/.test(benchProto?.error || ''), JSON.stringify(benchProto))
 
   console.log(`\n结果: ${passed} 通过 / ${failed} 失败`)
   process.exit(failed ? 1 : 0)

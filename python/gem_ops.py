@@ -211,7 +211,7 @@ def op_annotate(args):
 # op: media_resolve — 跨引擎介质解析 RPC（genie 消费侧统一走此；防介质语义漂移）
 # ---------------------------------------------------------------------------
 def op_media_resolve(args):
-    from gapfind import expand_medium, resolve_medium
+    from gapfind import expand_medium, resolve_medium, build_ex_index, ex_index_is_boundary, ex_display_name
     from silentio import silent_read_sbml
     model = args.get("model")
     if not model or not os.path.exists(model):
@@ -219,12 +219,19 @@ def op_media_resolve(args):
     m = silent_read_sbml(model)
     med, preset = expand_medium(args.get("medium"))
     resolved, unresolved = resolve_medium(m, med)
-    return {"ok": True, "result": {
+    idx = build_ex_index(m)
+    boundary_style = ex_index_is_boundary(idx)
+    result = {
         "resolved_exchanges": sorted(resolved),
         "medium_preset": preset,
         "unresolved": unresolved,
         "model": model,
-    }}
+        # 阶段B-B1 附加（只增）：两级策略②启用标注 + 规范展示名
+        "boundary_style": boundary_style,
+    }
+    if boundary_style:
+        result["resolved_display"] = [ex_display_name(m, rid) for rid in sorted(resolved)]
+    return {"ok": True, "result": result}
 
 
 # ---------------------------------------------------------------------------
@@ -376,7 +383,27 @@ def op_ledger(args):
     return {"ok": False, "error": f"unknown ledger action: {action}（list|query|update）"}
 
 
+# ---------------------------------------------------------------------------
+# op: benchmark — 阶段B-B1 通用基准对比（六关并列/生长/含边界介质回退/biomass 探针/必需性对比
+#     含退化护栏/表型/可复现性/账本 comparison_refs 回填；md 落盘可选）
+# ---------------------------------------------------------------------------
+def op_benchmark(args):
+    from benchmark import benchmark
+    model_a, model_b = args.get("model_a"), args.get("model_b")
+    for k, v in (("model_a", model_a), ("model_b", model_b)):
+        if not v or not os.path.exists(v):
+            return {"ok": False, "error": f"{k} file not found: {v}"}
+    return {"ok": True, "result": benchmark(
+        model_a, model_b, medium=args.get("medium"),
+        phenotype_table=args.get("phenotype_table"),
+        reference_essential=args.get("reference_essential"),
+        essential_full=args.get("essential_full", False),
+        ledger_refs=args.get("ledger_refs", True),
+        export_md=args.get("export_md"), ledger_path=args.get("ledger_path"))}
+
+
 OPS["ledger"] = op_ledger
+OPS["benchmark"] = op_benchmark
 
 
 def main():

@@ -132,7 +132,13 @@ def build_met_index(m, compartment="c0"):
 
 
 def build_ex_index(m):
-    """EX 交换名索引（去 -e0 后缀小写）-> EX 反应 id。"""
+    """EX 交换名索引（去 -e0 后缀小写）-> EX 反应 id。
+    两级策略（阶段B）：
+      ① EX_/DM_/SK_ 前缀优先——现有行为逐字保留（仅 EX_ 前缀反应入索引）；
+      ② 仅当模型 EX_ 索引整体为空（全模型无 EX_ 前缀交换反应）时，回退用 boundary
+         单代谢物反应（恰好 1 个代谢物且 rxn.boundary=True）作为交换候选，返回
+         BoundaryExIndex（真实反应 id 为值；禁用受控子串层防跨命名空间误配）。
+    "单个名字未命中"不触发回退——有 EX_ 层的模型永不启用②（C58 零影响硬保证）。"""
     idx = {}
     for r in m.reactions:
         if r.id.startswith("EX_"):
@@ -142,17 +148,31 @@ def build_ex_index(m):
                     nm = nm[:-3]
                 if nm:
                     idx.setdefault(norm(nm), r.id)
-    return idx
+    if idx:
+        return idx
+    # 阶段B 两级策略②：EX_ 层整体缺失 -> boundary 单代谢物反应回退
+    bidx = BoundaryExIndex()
+    for r in m.reactions:
+        if r.boundary and len(r.metabolites) == 1:
+            x = next(iter(r.metabolites))
+            nm = (x.name or "").strip().lower()
+            if nm:
+                bidx.setdefault(norm(nm), r.id)
+            bidx.setdefault(norm("EX_" + x.id), r.id)  # 伪 EX 约定键（EX_M00081_e 形式可直传）
+            bidx.setdefault(norm(r.id), r.id)          # 真实反应 id 直键
+    return bidx
 
 
-def match_ex(sub, ex_idx):
+def match_ex(sub, ex_idx, allow_substring=None):
     """底物名 -> EX id；三层：精确(含 SYN 别名) -> CARVE_ALIAS -> 受控子串回退。
     子串回退防误伤（2026-08-29 实测）：'o2' 曾命中 'R Acetoin C4H8O2'（名字尾部含 o2）
     导致 O2 交换错配 -> 模型"AB 不生长"假象。规则：
       - 短 key（<=4 且不含 '+'）：只允许前缀匹配（n.startswith(key)）
       - 含 '+' 的 key（金属离子）：允许前缀或后缀（iron(fe3+)→ironfe3+ endswith fe3+）
       - 长 key（>=5）：允许子串
-    """
+    阶段B：受控子串层可对单个索引禁用——boundary 回退索引（BoundaryExIndex）跨命名空间
+    短名易误配（实测 'd-glucose' ⊂ 'd-glucose1-phosphate' 会把 G1P 交换错当葡萄糖），
+    故其 allow_substring=False；普通 dict 索引默认 True，既有行为逐字保留。"""
     key = norm(sub)
     if key in ex_idx:
         return ex_idx[key]
@@ -169,6 +189,10 @@ def match_ex(sub, ex_idx):
         for n, rid in ex_idx.items():
             if n.startswith(a) or (("+" in a or len(a) >= 5) and a in n):
                 return rid
+    if allow_substring is None:
+        allow_substring = getattr(ex_idx, "allow_substring", True)
+    if not allow_substring:
+        return None
     for n, rid in ex_idx.items():
         # 只做正向子串（key 是 n 的子串）；反向（n in key）误伤严重：
         # "no" in "arabinose"、"co" in "gluconate"、"phosphate" in "glucose-1-phosphate"
@@ -178,6 +202,34 @@ def match_ex(sub, ex_idx):
             if "+" in key or len(key) >= 5:
                 return rid
     return None
+
+
+class BoundaryExIndex(dict):
+    """两级策略②的 boundary 回退索引（阶段B）。
+    仅当全模型无 EX_ 前缀交换反应时由 build_ex_index 产出；禁用受控子串回退层
+    （跨命名空间误配实证：d-glucose ⊂ d-glucose1-phosphate）。"""
+
+
+def ex_index_is_boundary(ex_idx):
+    """该索引是否为 boundary 回退型（boundary_style=True 的模型介质层）。"""
+    return isinstance(ex_idx, BoundaryExIndex)
+
+
+def has_ex_layer(m):
+    """模型是否有 EX_ 前缀交换层（决定是否启用 boundary 回退）。"""
+    return any(r.id.startswith("EX_") for r in m.reactions)
+
+
+def ex_display_name(m, rid):
+    """交换的规范展示名：boundary 型交换 -> EX_<met_id>（boundary-derived）；EX_ 型返回原 id。"""
+    try:
+        rxn = m.reactions.get_by_id(rid)
+    except Exception:
+        return rid
+    mets = list(rxn.metabolites)
+    if (not rid.startswith("EX_")) and len(mets) == 1:
+        return f"EX_{mets[0].id}（boundary-derived）"
+    return rid
 
 
 def resolve_medium(m, medium):

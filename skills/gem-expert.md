@@ -22,6 +22,7 @@ language: mixed
 | 跨条件通量对比（哪个反应真变了）| `gem_fluxscan`（区间制：FVA 区间+pFBA 点值，区间分离=硬结论，overlap=伪影禁止引用）|
 | 量化模型不确定性（biomass/GAM 扰动下预测稳不稳）| `gem_sensitivity`（22 组合网格+稳定性三分类+单组分漂移；action=probe 秒级探测）|
 | 查询/更新模型预测（必需性/表型预测追踪与实验兑现）| `gem_ledger`（list/query/update；预测默认 unverified，兑现后回填状态）|
+| 两个模型规范对比（论文级基准表）| `gem_benchmark`（model_a+model_b：六关并列/生长/biomass 断供探针/必需性对比[退化侧只报结构]/表型/账本回填；export_md 落盘）|
 | 用 Biolog/文献表型表校准模型（提升匹配率）| `gem_phenotype`（phenotype_table + medium；自动补 L1/L2）|
 | 把自然名培养基转成模型交换（消费方统一入口）| `gem_media_resolve`（model + medium → EX ID 列表）|
 | gapseq 质量重建（需 WSL2）| `gem_gapseq`：setup → launch →（循环 status 直到 done）→ fetch，agent 编排 |

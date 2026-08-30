@@ -4,7 +4,7 @@
 
 Genome-scale metabolic model builder for dsh: genome in, validated SBML out.
 
-## 工具（15）
+## 工具（16）
 
 | 工具 | 作用 | 状态 |
 |---|---|---|
@@ -23,6 +23,7 @@ Genome-scale metabolic model builder for dsh: genome in, validated SBML out.
 | `gem_fluxscan` | 通量区间制（FVA 区间+pFBA 点值；条件对比区间分离判定，overlap=伪影禁止引用）| ✅ C58 AB 0.519981 / 蔗糖 supplement 0.97077 |
 | `gem_sensitivity` | 结构性灵敏度（GAM×biomass 22 组合全量+稳定性三分类+单组分漂移+模型卡鲁棒性 v3）| ✅ C58 基准复现 155 |
 | `gem_ledger` | 预测账本（essentiality/phenotype 自动登记；幂等；list/query/update；基率追踪）| ✅ C58 155+19 条幂等复跑 |
+| `gem_benchmark` | 通用基准对比（两模型六关并列/生长/biomass 断供探针/必需性对比[退化护栏]/表型/账本回填；介质层两级策略：无 EX_ 层自动回退 boundary）| ✅ B1 自检 C58 vs C58_P1 |
 
 架构/决策见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/DECISIONS-2026-08-29.md](docs/DECISIONS-2026-08-29.md)。
 

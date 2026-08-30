@@ -1,6 +1,6 @@
-// dsh-bio-gem — 工具层（defineTool 注册，15 语义化工具，2026-08-30 阶段A-M3 起）
+// dsh-bio-gem — 工具层（defineTool 注册，16 语义化工具，2026-08-30 阶段B-B1 起）
 // 全部执行走 python/gem_ops.py（JSON stdin 协议）或 build.py CLI（gem_build 长任务）。
-// op 与工具对照：14 op（含 l3_fix/fluxscan/sensitivity/ledger）+ build CLI；详见 docs/ARCHITECTURE.md §3。
+// op 与工具对照：15 op（含 l3_fix/fluxscan/sensitivity/ledger/benchmark）+ build CLI；详见 docs/ARCHITECTURE.md §3。
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { join } from 'node:path'
 import { dirname, isAbsolute } from 'node:path'
@@ -404,9 +404,36 @@ export function registerTools(ctx) {
     timeoutMs: 60_000,
   })))
 
+  // gem_benchmark：通用基准对比（阶段B-B1：任何两个 GEM 的规范对比表，六关并列+生长+biomass 探针+必需性+表型+账本回填）
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_benchmark',
+    description:
+      '通用基准对比（benchmark）：任何两个代谢模型（本地 SBML 文件）跑规范对比表，产出论文级对比。' +
+      '输出：ID 体系探测 / 六道关卡 G1-G6 逐项并列 / 声明介质生长（含介质层两级策略——无 EX_ 层的模型自动回退 ' +
+      'boundary 单代谢物反应解析，boundary_style 标注）/ biomass 可行性探针（逐组分净产测试，结构性断供清单）/ ' +
+      '必需性对比（复用 essential_scan；任一侧 wt<=EPS 判退化只报结构信息不做垃圾对比，基因映射尽力而为如实报覆盖率，' +
+      'reference_essential 文献值仅标注不冒充模型输出）/ 表型对比（G4 sole）/ 可复现性评估 / 账本 comparison_refs ' +
+      '回填（update 语义幂等可重入）。export_md 落盘论文级 Markdown。' +
+      '生长/通量数值为单点 FBA 口径（mmol/gDW/h）；条件间通量对比用 gem_fluxscan（区间制）。' +
+      '触发词：模型对比、两个模型比较、基准、benchmark、跨模型校准。',
+    parameters: {
+      model_a: { type: 'string', required: true, description: '模型 A SBML 绝对路径' },
+      model_b: { type: 'string', required: true, description: '模型 B SBML 绝对路径' },
+      medium: { type: 'object', additionalProperties: true, description: '对比介质（缺省 {"medium_name": "AB"}）' },
+      phenotype_table: { type: 'string', description: '可选：底物表型 TSV（substrate<TAB>published 0/1），提供则跑表型对比' },
+      reference_essential: { type: 'object', additionalProperties: true, description: '可选：文献必需基因集（如 {"b": [...]})，仅报告标注不参与计算' },
+      essential_full: { type: 'boolean', description: 'true=全量必需性对比（各 ~50s）；false=抽检 40（G5 口径，默认）' },
+      ledger_refs: { type: 'boolean', description: '对比后回填账本 comparison_refs（默认 true；幂等可重入）' },
+      export_md: { type: 'string', description: '论文级 Markdown 落盘路径' },
+      ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径（缺省 ~/.dsh/dsh-bio-gem/ledger/predictions.jsonl）' },
+    },
+    op: 'benchmark',
+    timeoutMs: 1_200_000,
+  })))
+
   return () => disposers.forEach((d) => d())
 }
 
 export const gemToolNames = ['gem_report', 'gem_validate', 'gem_gapfind', 'gem_gapfill', 'gem_build',
   'gem_gapseq', 'gem_phenotype', 'gem_essentiality', 'gem_annotate', 'gem_media_resolve', 'gem_l3_fix',
-  'gem_biomass', 'gem_fluxscan', 'gem_sensitivity', 'gem_ledger']
+  'gem_biomass', 'gem_fluxscan', 'gem_sensitivity', 'gem_ledger', 'gem_benchmark']
