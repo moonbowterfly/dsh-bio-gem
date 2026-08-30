@@ -1,6 +1,6 @@
-// dsh-bio-gem — 工具层（defineTool 注册，17 语义化工具，2026-08-30 阶段C-C1 起）
+// dsh-bio-gem — 工具层（defineTool 注册，18 语义化工具，2026-08-30 阶段C-C2 起）
 // 全部执行走 python/gem_ops.py（JSON stdin 协议）或 build.py CLI（gem_build 长任务）。
-// op 与工具对照：16 op（含 fluxscan/sensitivity/ledger/benchmark/secretion）+ build CLI；详见 docs/ARCHITECTURE.md §3。
+// op 与工具对照：17 op（含 fluxscan/sensitivity/ledger/benchmark/secretion/double_knockout）+ build CLI；详见 docs/ARCHITECTURE.md §3。
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { join } from 'node:path'
 import { dirname, isAbsolute } from 'node:path'
@@ -456,10 +456,35 @@ export function registerTools(ctx) {
     timeoutMs: 900_000,
   })))
 
+  // gem_double_knockout：双敲 v1 合成致死（阶段C-C2：GPR 穷尽先验 + FVA 预筛全扫，假设声明内置）
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_double_knockout',
+    description:
+      '双敲 v1（合成致死预测）：候选池=①GPR 结构先验（纯 or 型且恰 2 基因的反应=穷尽型同工酶对，必做）+' +
+      '②FVA 预筛活性反应关联基因中共享反应的基因对（复用 essential_scan 预筛与敲除；全扫受 max_pairs 预算上限' +
+      '默认 5000，超限截断+报告）。判定：单敲双活（>1e-6）且双敲死（<=1e-6）→ 合成致死对。' +
+      '输出 {pair, single_a_growth, single_b_growth, double_growth, rationale（GPR先验/全扫）, source}。' +
+      '**假设声明：细菌双敲验证率无大规模实验数据支撑，本结果=假设生成，供实验设计参考非结论**。' +
+      '被测模型 wt<=EPS → degenerate=true 不扫描不登记（提示介质适配）。每对自动登记账本 type=synthetic_lethal（幂等）。' +
+      '生长/通量数值为单点 FBA 口径（mmol/gDW/h）；条件间通量对比用 gem_fluxscan（区间制）。' +
+      '触发词：双敲、合成致死、double knockout、基因对敲除、互补基因。',
+    parameters: {
+      model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
+      medium: { type: 'object', additionalProperties: true, description: '判定条件（缺省 {"medium_name": "AB"}）' },
+      max_pairs: { type: 'integer', description: '全扫预算上限（默认 5000 对；超限截断并报告）' },
+      export_csv: { type: 'string', description: '合成致死对 CSV 落盘路径' },
+      ledger_refs: { type: 'boolean', description: '合成致死对登记账本（默认 true；幂等）' },
+      ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径' },
+    },
+    op: 'double_knockout',
+    timeoutMs: 1_200_000,
+  })))
+
 
   return () => disposers.forEach((d) => d())
 }
 
 export const gemToolNames = ['gem_report', 'gem_validate', 'gem_gapfind', 'gem_gapfill', 'gem_build',
   'gem_gapseq', 'gem_phenotype', 'gem_essentiality', 'gem_annotate', 'gem_media_resolve', 'gem_l3_fix',
-  'gem_biomass', 'gem_fluxscan', 'gem_sensitivity', 'gem_ledger', 'gem_benchmark', 'gem_secretion']
+  'gem_biomass', 'gem_fluxscan', 'gem_sensitivity', 'gem_ledger', 'gem_benchmark', 'gem_secretion',
+  'gem_double_knockout']

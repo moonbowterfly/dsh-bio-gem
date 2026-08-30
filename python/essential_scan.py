@@ -31,7 +31,25 @@ def setup_model_medium(m, medium=None):
     return resolved, unresolved, preset
 
 
-def scan_essentiality(m, gene_subset=None, progress=None):
+def prescreen_candidates(m, gene_subset=None):
+    """FVA(fraction=0) 预筛（阶段C-C2 抽出复用）：返回 (active_rxns, cand_genes, n_tested, fva_s)。
+    cand_genes = 关联至少一个可通量反应的基因（死基因免敲）；n_tested = FVA 检查的反应总数。"""
+    t0 = time.time()
+    fva = flux_variability_analysis(m, fraction_of_optimum=0.0, processes=1)
+    fva_s = round(time.time() - t0, 1)
+    active_rxns = set(fva.index[((fva["maximum"] > FVA_EPS) | (fva["minimum"] < -FVA_EPS))])
+    cand_genes = set()
+    for g in m.genes:
+        if gene_subset and g.id not in gene_subset:
+            continue
+        if any(r.id in active_rxns for r in g.reactions):
+            cand_genes.add(g.id)
+    print(f"[scan] FVA {fva_s}s；可通量反应 {len(active_rxns)}/{len(fva)}；候选基因 {len(cand_genes)}",
+          file=sys.stderr)
+    return active_rxns, cand_genes, len(fva), fva_s
+
+
+def scan_essentiality(m, gene_subset=None, progress=None, return_candidates=False):
     """必需性扫描核心（阶段A-M2 抽出复用）。输入：介质 bounds 已设好的模型。
     FVA(fraction=0) 预筛 -> 可通量反应关联基因 -> 手工敲除（<EPS 判必需）。
     返回 {wt_growth, total_genes, fva_tested_reactions, active_reactions, tested_genes,
@@ -41,18 +59,7 @@ def scan_essentiality(m, gene_subset=None, progress=None):
     print(f"[scan] wt = {wt:.6f}; genes = {len(m.genes)}", file=sys.stderr)
 
     # 1) FVA 预筛（fraction_of_optimum=0 全范围）：无通量的反应关联基因免敲
-    t0 = time.time()
-    fva = flux_variability_analysis(m, fraction_of_optimum=0.0, processes=1)
-    fva_s = round(time.time() - t0, 1)
-    active_rxns = set(fva.index[((fva["maximum"] > FVA_EPS) | (fva["minimum"] < -FVA_EPS))])
-    print(f"[scan] FVA {fva_s}s；可通量反应 {len(active_rxns)}/{len(fva)}", file=sys.stderr)
-
-    cand_genes = set()
-    for g in m.genes:
-        if gene_subset and g.id not in gene_subset:
-            continue
-        if any(r.id in active_rxns for r in g.reactions):
-            cand_genes.add(g.id)
+    active_rxns, cand_genes, n_fva, fva_s = prescreen_candidates(m, gene_subset=gene_subset)
     print(f"[scan] 候选基因（关联可通量反应）{len(cand_genes)}", file=sys.stderr)
     print(f"[scan]         预计免敲 {max(0, len(m.genes) - len(cand_genes))} 个（{max(0, len(m.genes)-len(cand_genes))/max(1,len(m.genes))*100:.0f}%）", file=sys.stderr)
 
@@ -69,10 +76,10 @@ def scan_essentiality(m, gene_subset=None, progress=None):
             progress({"tested": len(cand_genes), "essential_so_far": len(essential)})
     knock_s = round(time.time() - t0, 1)
 
-    return {
+    out = {
         "wt_growth": round(wt, 6),
         "total_genes": len(m.genes),
-        "fva_tested_reactions": len(fva),
+        "fva_tested_reactions": n_fva,
         "active_reactions": len(active_rxns),
         "tested_genes": len(cand_genes),
         "essential_count": len(essential),
@@ -81,6 +88,10 @@ def scan_essentiality(m, gene_subset=None, progress=None):
         "fva_seconds": fva_s,
         "knock_seconds": knock_s,
     }
+    if return_candidates:  # 阶段C-C2：double_knockout 复用（避免二次 FVA 预筛）
+        out["candidate_genes"] = sorted(cand_genes)
+        out["active_rxn_ids"] = sorted(active_rxns)
+    return out
 
 
 def essential_scan(model_path, medium=None, gene_subset=None, progress=None, ledger_path=None):

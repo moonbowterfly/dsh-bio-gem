@@ -164,7 +164,7 @@ async function main() {
     bg?.error === 'budget_exceeded' && bg?.confirm_required === true, JSON.stringify(bg))
   const toolsSrc = readFileSync(join(REPO, 'src', 'tools.js'), 'utf8')
   const nReg = (toolsSrc.match(/ctx\.tools\.register\(/g) || []).length
-  check('tools: 17 个语义化工具注册', nReg === 17, `got ${nReg}`)
+  check('tools: 18 个语义化工具注册', nReg === 18, `got ${nReg}`)
 
   // 7) Q2 工程质量件：SBML 往返保真（GPR 防丢）+ 模型卡 v2 selftest
   const rt = await runPy('roundtrip_check.py', { model: C58 })
@@ -348,6 +348,19 @@ async function main() {
     degV4?.result?.degenerate === true && degV4?.result?.results === undefined
     && !existsSync(join(tmpSecDir, 'deg.jsonl')),
     JSON.stringify(degV4?.result?.degenerate_note?.slice(0, 60)))
+
+  // 14) 阶段C-C2：gem_double_knockout 双敲（op 协议 + 退化护栏 + 预算语义；真实锚点 Atu3364-Atu4682
+  //     模型内对应 NC_003063_2_1618/352 见 phaseC 报告，smoke 不重跑全量 4min）
+  const dkProto = await runPy('gem_ops.py', { op: 'double_knockout', args: {} })
+  check('double_knockout: op 协议（缺 model 明确报错）',
+    dkProto?.ok === false && /model file not found/.test(dkProto?.error || ''), JSON.stringify(dkProto))
+  const degDk = await runPy('gem_ops.py', {
+    op: 'double_knockout', args: { model: INX4, ledger_path: join(tmpSecDir, 'dk.jsonl') },
+  })
+  check('double_knockout: 退化护栏（v4 wt=0 -> degenerate=true 不扫描不登记）',
+    degDk?.result?.degenerate === true && degDk?.result?.results === undefined
+    && !existsSync(join(tmpSecDir, 'dk.jsonl')),
+    JSON.stringify(degDk?.result?.degenerate_note?.slice(0, 60)))
 
   console.log(`\n结果: ${passed} 通过 / ${failed} 失败`)
   process.exit(failed ? 1 : 0)

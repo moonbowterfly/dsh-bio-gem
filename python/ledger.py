@@ -272,6 +272,29 @@ def register_secretion(model_path, secretion_rows, condition=None,
     return register_predictions(rows, path)
 
 
+def register_synthetic_lethal(model_path, pair_rows, condition=None,
+                              lineage_version=None, path=None):
+    """gem_double_knockout 自动登记：每合成致死对一条（type=synthetic_lethal，
+    status=unverified，evidence_tier=EVIDENCE_math——双敲 LP 判定）。"""
+    rows = []
+    for r in pair_rows or []:
+        ga, gb = r.get("gene_a"), r.get("gene_b")
+        rows.append({
+            "type": "synthetic_lethal",
+            "content": f"{ga} 与 {gb} 在 {condition} 下合成致死",
+            "model": model_path,
+            "model_lineage_version": lineage_version,
+            "condition": condition,
+            "evidence_tier": "EVIDENCE_math",
+            "status": "unverified",
+            "source_refs": [],
+            "comparison_refs": [],
+            "evidence_note": "双敲 LP 判定（单敲双活>1e-6 且双敲死<=1e-6）；"
+                             "假设生成供实验设计参考，非结论",
+        })
+    return register_predictions(rows, path)
+
+
 if __name__ == "__main__":
     # 双协议（stdin / argv 文件）+ selftest（临时路径，全功能演示）
     if "--selftest" in sys.argv:

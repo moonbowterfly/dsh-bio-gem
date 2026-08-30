@@ -426,6 +426,24 @@ def op_secretion(args):
 OPS["secretion"] = op_secretion
 
 
+# ---------------------------------------------------------------------------
+# op: double_knockout — 阶段C-C2 双敲 v1（合成致死；GPR 穷尽先验 + FVA 预筛全扫，max_pairs 预算；
+#     假设声明内置；wt<=EPS 退化护栏不登记；type=synthetic_lethal 账本登记幂等）
+# ---------------------------------------------------------------------------
+def op_double_knockout(args):
+    from double_knockout import double_knockout
+    model = args.get("model")
+    if not model or not os.path.exists(model):
+        return {"ok": False, "error": f"model file not found: {model}"}
+    return {"ok": True, "result": double_knockout(
+        model, medium=args.get("medium"), max_pairs=args.get("max_pairs", 5000),
+        export_csv=args.get("export_csv"), ledger_refs=args.get("ledger_refs", True),
+        ledger_path=args.get("ledger_path"))}
+
+
+OPS["double_knockout"] = op_double_knockout
+
+
 
 def main():
     line = sys.stdin.read()
