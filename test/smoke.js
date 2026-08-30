@@ -18,6 +18,7 @@ const REPO = join(fileURLToPath(new URL('.', import.meta.url)), '..')
 const PYDIR = join(REPO, 'python')
 const C58 = 'F:/A_NGJ plan/Zcode/models/gapseq_C58/C58.xml'
 const C58P1 = 'F:/A_NGJ plan/Zcode/models/gapseq_C58/C58_P1.xml'
+const INX4 = 'F:/A_NGJ plan/Zcode/models/iNX1344_v4.xml'
 const FAA = 'D:/Program/hermes/temp/gem_build_test/C58_protein.faa'
 
 const AB = {
@@ -271,6 +272,17 @@ async function main() {
     status: 'experimentally_verified', ledger_path: tmpLedger } })
   check('gem_ledger: op query（更新后可过滤）',
     ledQuery?.ok === true && ledQuery?.result?.matched === 1, JSON.stringify(ledQuery?.result?.matched))
+
+  // 11) 阶段A遗留修正：退化护栏（wt<=EPS 必需性判定恒真 -> 不登记 ledger）
+  const tmpDegDir = mkdtempSync(join(tmpdir(), 'gem-smoke-deg-'))
+  const tmpDegLedger = join(tmpDegDir, 'predictions.jsonl')
+  const deg = await runPy('gem_ops.py', { op: 'essential_scan', args: { model: INX4, ledger_path: tmpDegLedger } })
+  check('退化护栏: v4 wt=0 不登记（degraded=true, appended=0, skipped_degraded=1066, 账本文件未创建）',
+    deg?.result?.ledger_registration?.degraded === true
+    && deg?.result?.ledger_registration?.appended === 0
+    && deg?.result?.ledger_registration?.skipped_degraded === 1066
+    && !existsSync(tmpDegLedger),
+    JSON.stringify(deg?.result?.ledger_registration))
 
   console.log(`\n结果: ${passed} 通过 / ${failed} 失败`)
   process.exit(failed ? 1 : 0)

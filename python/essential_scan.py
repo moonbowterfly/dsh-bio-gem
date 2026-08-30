@@ -106,6 +106,16 @@ def essential_scan(model_path, medium=None, gene_subset=None, progress=None, led
             set_essential_genes(model_path, result, model=m)
     except Exception:
         pass
+    # 阶段A遗留修正（退化护栏，只增分支）：wt<=EPS 时必需性判定恒真（v=0 使全部候选判"必需"，
+    # M5 实测曾把 iNX1344_v4 的 1066 条此类退化预测写入真实账本）——跳过 ledger 自动登记。
+    # C58 正常路径（wt>EPS）不进此分支，登记行为不变。
+    if result["wt_growth"] <= EPS:
+        warn = "wt<=EPS：必需性判定恒真，扫描结果无生物学意义，未登记"
+        sys.stderr.write(f"[scan] WARN wt_growth={result['wt_growth']} {warn}（ledger）\n")
+        result["ledger_registration"] = {"appended": 0,
+                                         "skipped_degraded": len(result["essential_genes"]),
+                                         "degraded": True, "warn": warn}
+        return result
     # 阶段A-M3: prediction ledger 自动登记（每必需基因一条；幂等去重；写入失败仅 WARN 不阻塞）
     try:
         import ledger as _ledger

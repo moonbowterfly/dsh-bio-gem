@@ -68,6 +68,9 @@ language: mixed
 - gapfind 对 C58.xml + 蔗糖 → L1（缺 EX_cpd00076_e0，fixable yes）
 - gapfill 后蔗糖生长 **0.97077**（与手工 P1 补洞一致）
 - gem_build 对 C58 protein.faa → M9 G3 PASS（growth>0），全流程 ~70s
+- gem_fluxscan（区间制）对 C58.xml：条件 {AB} growth **0.519981**；C58_P1.xml + 蔗糖 supplement growth **0.97077**；输出每反应 fva_min/fva_max/pfba，条件对比只认区间分离判定（overlap=伪影禁止引用）
+- gem_sensitivity 对 C58.xml（AB）：基准组合（biomass×1.0, GAM=orig 40.0）**精确复现 essential_scan 的 155**（155 vs 155 EXACT MATCH）；22 组合网格必需性恒 155
+- gem_ledger：C58 essentiality 155 条 + phenotype 19 条入账，**幂等**——同参复跑 appended=0/skipped=174（账本行数不变）
 - 对不上这些锚点 = 环境/模型被改动，先查再继续。
 
 ## 常见坑
