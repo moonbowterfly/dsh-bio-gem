@@ -42,7 +42,7 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 | gem_enrichment | op enrichment（必需基因通路富集：超几何+BH FDR；无注释 annotation_unavailable 兜底）| ✅ 阶段C-C3 DONE（C58 55 条 FDR 显著）|
 | gem_targets | op targets（靶点规范导出：11 字段锁定 schema；账本计数闭合；引物设计不做）| ✅ 阶段C-C4 DONE（258 行三类闭合）|
 
-> Python 分发器 `gem_ops.py` 共 **19 个 op**（model_info/validate/gapfind/gapfill/gapseq/phenotype_fix/essential_scan/annotate/media_resolve/l3_fix/biomass_inspect/biomass_apply/fluxscan/sensitivity/ledger/benchmark/secretion/double_knockout/enrichment/targets）；`gem_build` 不经分发器，由 `build.py` CLI 直接调用（长任务，jobs.js 拉起）。工具数（20）= op 数（19）+1（gem_biomass 一工具映射两 op）（biomass 一工具映射两 op，build 走 CLI 不占 op）。附模型卡统一写入 `python/model_card.py`（lineage/verified_phenotypes/essential_genes/robustness v3）与往返保真自检 `python/roundtrip_check.py`；预测账本 `python/ledger.py`（`~/.dsh/dsh-bio-gem/ledger/predictions.jsonl`）。**生长/通量数值口径（阶段A-M4）**：所有产出生长/通量数值的工具输出均带 `units: mmol/gDW/h` 与单点 FBA 声明；条件间通量对比一律走 gem_fluxscan 区间分离判定（overlap=伪影禁止引用）。
+> Python 分发器 `gem_ops.py` 共 **19 个 op**（model_info/validate/gapfind/gapfill/gapseq/phenotype_fix/essential_scan/annotate/media_resolve/l3_fix/biomass_inspect/biomass_apply/fluxscan/sensitivity/ledger/benchmark/secretion/double_knockout/enrichment/targets）；`gem_build` 不经分发器，由 `build.py` CLI 直接调用（长任务，jobs.js 拉起）。工具数（20）= op 数（19）+1（gem_biomass 一工具映射两 op）（biomass 一工具映射两 op，build 走 CLI 不占 op）。附模型卡统一写入 `python/model_card.py`（lineage/verified_phenotypes/essential_genes/robustness v3）与往返保真自检 `python/roundtrip_check.py`；预测账本 `python/ledger.py`（一个模型一个账本：`~/.dsh/dsh-bio-gem/ledger/<模型名>.jsonl`，按模型 basename 分，显式 ledger_path 可覆盖；无参查询=聚合全局视图；旧全局 predictions.jsonl 已迁移为 legacy）。**生长/通量数值口径（阶段A-M4）**：所有产出生长/通量数值的工具输出均带 `units: mmol/gDW/h` 与单点 FBA 声明；条件间通量对比一律走 gem_fluxscan 区间分离判定（overlap=伪影禁止引用）。
 
 ## 4. 引擎路线（M1→M2→M3）
 
