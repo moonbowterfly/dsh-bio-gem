@@ -6,6 +6,7 @@
 # 验证：predict 蛋白集合 vs 官方蛋白的完全一致率应 85-92%（C58 验证见 logs）。
 import os
 import sys
+import csv
 import glob
 import pyrodigal
 
@@ -74,6 +75,9 @@ def nucleotide_to_protein(fna_path, out_faa=None, prefer_existing=True):
     base = os.path.splitext(os.path.basename(fna_path))[0]
     if out_faa is None:
         out_faa = os.path.join(d, base + ".gem_annot.faa")
+    # P2-8 修复（2026-08-31 LBA9402 会话首调真实事故）：输出目录不存在直接 FileNotFoundError
+    out_dir = os.path.dirname(os.path.abspath(out_faa)) or "."
+    os.makedirs(out_dir, exist_ok=True)
 
     # 1) 优先已有的官方蛋白
     if prefer_existing:
@@ -83,25 +87,26 @@ def nucleotide_to_protein(fna_path, out_faa=None, prefer_existing=True):
             best = cands[0]
             n = sum(1 for l in open(best, encoding="utf-8", errors="ignore") if l.startswith(">"))
             if n > 50:
-                return best, "official_protein", {"seqs": n, "note": f"现有蛋白 {os.path.basename(best)}"}
+                return best, "official_protein", {"seqs": n, "gene_table": None,
+                                                  "note": f"现有蛋白 {os.path.basename(best)}"}
 
     # 2) 官方 CDS（cds_from_genomic.fna）直译蛋白
     cds = os.path.join(d, "cds_from_genomic.fna")
     if os.path.exists(cds):
         faa, n = _translate_cds_file(cds, out_faa)
         if n > 50:
-            return faa, "cds_translate", {"seqs": n}
+            return faa, "cds_translate", {"seqs": n, "gene_table": None}
 
     # 3) GFF 官方注释解析翻译
     gffs = glob.glob(os.path.join(d, "*.gff")) + glob.glob(os.path.join(d, "*.gff3"))
     if gffs and os.path.exists(fna_path):
-        faa, n = _translate_from_gff(fna_path, gffs[0], out_faa)
+        faa, n, gt = _translate_from_gff(fna_path, gffs[0], out_faa)
         if faa and n > 50:
-            return faa, "gff_translate", {"seqs": n}
+            return faa, "gff_translate", {"seqs": n, "gene_table": gt}
 
     # 4) pyrodigal 兜底
     n = _pyrodigal_predict(fna_path, out_faa)
-    return out_faa, "pyrodigal", {"seqs": n}
+    return out_faa, "pyrodigal", {"seqs": n, "gene_table": None}
 
 
 def _pyrodigal_predict(fna_path, out_faa):
@@ -135,11 +140,36 @@ def _pyrodigal_predict(fna_path, out_faa):
     return n_out
 
 
+def _parse_gff_attrs(col9):
+    """GFF 第 9 列 attributes -> dict（剥引号）。支持 key=value 与 key value 两种分隔。"""
+    d = {}
+    if not col9:
+        return d
+    for kv in col9.rstrip("\n").split(";"):
+        if not kv.strip():
+            continue
+        if "=" in kv:
+            k, v = kv.split("=", 1)
+        elif " " in kv:
+            k, v = kv.split(" ", 1)
+        else:
+            continue
+        k = k.strip()
+        v = v.strip().strip('"').strip("'")
+        if k:
+            d[k] = v
+    return d
+
+
 def _translate_from_gff(fna_path, gff_path, out_faa):
-    """从 GFF 提取 CDS 坐标并在 fna 上翻译（零依赖：内嵌密码子表）。"""
+    """从 GFF 提取 CDS 坐标并在 fna 上翻译（零依赖：内嵌密码子表）。
+    同时产出基因注释表 <out_faa>.gene_table.tsv（P1-4：坐标ID→locus_tag/gene/product，
+    供 gem_essentiality 解读必需基因功能）。返回 (out_faa, n, gene_table_path)。"""
     _RC = str.maketrans("ACGTNacgtn", "TGCANtgcan")
     genome = {rid: seq for rid, seq in read_fasta(fna_path)}
+    gene_table_path = os.path.splitext(out_faa)[0] + ".gene_table.tsv"
     n = 0
+    rows = []
     with open(out_faa, "w", encoding="utf-8") as fo:
         for line in open(gff_path, encoding="utf-8", errors="ignore"):
             if line.startswith("#"):
@@ -155,9 +185,20 @@ def _translate_from_gff(fna_path, gff_path, out_faa):
             if strand == "-":
                 cds = cds.translate(_RC)[::-1]
             prot = translate_nt(cds)
-            fo.write(f">{seqid}_{start}_{end}_{strand}\n{prot}\n")
+            gid = f"{seqid}_{start}_{end}_{strand}"
+            fo.write(f">{gid}\n{prot}\n")
             n += 1
-    return out_faa, n
+            attrs = _parse_gff_attrs(p[8])
+            rows.append([gid, seqid, start, end, strand,
+                         attrs.get("locus_tag") or "",
+                         attrs.get("gene") or attrs.get("Name") or attrs.get("gene_name") or "",
+                         attrs.get("product") or ""])
+    with open(gene_table_path, "w", newline="", encoding="utf-8") as gt:
+        w = csv.writer(gt, delimiter="\t")
+        w.writerow(["gene_id", "seqid", "start", "end", "strand",
+                    "locus_tag", "gene_name", "product"])
+        w.writerows(rows)
+    return out_faa, n, gene_table_path
 
 
 if __name__ == "__main__":

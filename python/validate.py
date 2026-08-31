@@ -114,6 +114,8 @@ class Validator:
             "core_unbalanced_examples": {k: v[:5] for k, v in bad_core.items()},
             "h_o_report": {k: len(v) for k, v in bad_report.items()},
             "core_balance_frac": round(frac, 4),
+            # P0-2（2026-08-31 LBA9402 会话实测）：agent 会把 0.9985 心算换算成百分比而被防火墙拦——直接给原始百分数字段
+            "core_balance_frac_pct": round(frac * 100, 2),
         }
         return rep
 
@@ -183,17 +185,22 @@ class Validator:
     def g6_atp_leak(self, context=None):
         """ATP 泄漏测试（MEMOTE 核心测试；G3 all-closed 的必要不充分检查）：
         全关交换后最大化 ATP 代谢物的净消耗（demand），通量 > 0.01 → WARN。
-        补洞后必跑（context.post_gapfill 时不再跳过）。"""
+        补洞后必跑（context.post_gapfill 时不再跳过）。
+        P1-5 修复（2026-08-31 LBA9402 会话实测）：CarveMe 模型 ATP id 为 M_atp_c，
+        旧匹配只看 atp_c/cpd00002_c0 -> 误 SKIP「未找到 ATP」——扩展命名模式 + SKIP 时列出尝试模式与模型内候选。"""
         m = self.m
-        atp_c = None
-        for x in m.metabolites:
-            if x.compartment == "c0" or x.compartment == "c":
-                nm = (x.id or "").lower()
-                if nm in ("atp_c", "cpd00002_c0"):
-                    atp_c = x
-                    break
+        atp_patterns = ("atp_c", "cpd00002_c0", "m_atp_c", "atp_c0", "cpd00002", "atp")
+        cands = [x for x in m.metabolites if (x.id or "").lower() in atp_patterns]
+        cyto = [x for x in cands if x.compartment in ("c0", "c")]
+        atp_c = (cyto or cands or [None])[0]
         if atp_c is None:
-            return {"status": "SKIP", "reason": "未找到 ATP 代谢物"}
+            atp_like = sorted({x.id for x in m.metabolites if "atp" in (x.id or "").lower()})[:10]
+            return {"status": "SKIP",
+                    "reason": "未找到 ATP 代谢物（已尝试命名模式: " + ", ".join(atp_patterns) + "）",
+                    "tried_patterns": list(atp_patterns),
+                    "atp_like_ids_in_model": atp_like,
+                    "note": "SKIP 系命名口径未命中（非模型缺陷证明）；若模型含 ATP 但 id 不在尝试模式中，"
+                            "补充模式或标注 atp 角色后重跑"}
         dm = cobra.Reaction("DM_gem_atp_leak", name="G6 ATP 泄漏检测 demand",
                             lower_bound=0.0, upper_bound=1000.0)
         dm.add_metabolites({atp_c: -1})
@@ -209,6 +216,7 @@ class Validator:
         leak = abs(v)
         status = "PASS" if leak <= 0.01 else "WARN"
         return {"status": status, "atp_leak_flux": round(leak, 6),
+                "atp_metabolite_found": atp_c.id,
                 "threshold": 0.01, "post_gapfill": bool((context or {}).get("post_gapfill")),
                 "note": "全关交换后 ATP demand 通量应≈0；>0.01 提示能量循环泄漏（L3 MILP 补洞最可能引入）"}
 

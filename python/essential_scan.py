@@ -94,7 +94,51 @@ def scan_essentiality(m, gene_subset=None, progress=None, return_candidates=Fals
     return out
 
 
-def essential_scan(model_path, medium=None, gene_subset=None, progress=None, ledger_path=None):
+def _load_gene_table(path):
+    """gene_table.tsv（gem_annotate 产出）-> {gene_id: {locus_tag, gene_name, product}}。"""
+    import csv
+    mp = {}
+    if not path or not os.path.exists(path):
+        return mp
+    with open(path, encoding="utf-8") as f:
+        rd = csv.DictReader(f, delimiter="\t")
+        for row in rd:
+            gid = (row.get("gene_id") or "").strip()
+            if gid:
+                mp[gid] = {"locus_tag": (row.get("locus_tag") or "").strip(),
+                           "gene_name": (row.get("gene_name") or "").strip(),
+                           "product": (row.get("product") or "").strip()}
+    return mp
+
+
+def _attach_gene_table(result, gene_table):
+    """P1-4（2026-08-31 LBA9402 会话实测）：坐标型基因 ID 无功能语义，73 个必需基因无法解读。
+    关联 gem_annotate 的 gene_table.tsv -> essential_gene_details 带 locus_tag/product。
+    只增字段不破坏 essential_genes（str 列表）既有消费方（model_card/ledger/sensitivity/benchmark）。"""
+    result["gene_table_loaded"] = False
+    if not gene_table or not os.path.exists(gene_table):
+        return result
+    try:
+        mp = _load_gene_table(gene_table)
+        details = []
+        for g in result.get("essential_genes") or []:
+            info = mp.get(g) or {}
+            details.append({"gene_id": g,
+                            "locus_tag": info.get("locus_tag") or None,
+                            "gene_name": info.get("gene_name") or None,
+                            "product": info.get("product") or None})
+        result["gene_table_loaded"] = True
+        result["gene_table_path"] = os.path.abspath(gene_table)
+        result["essential_gene_details"] = details
+        result["gene_table_note"] = ("基因注释表已关联：essential_gene_details 提供坐标ID→locus_tag/product 映射，"
+                                     "用于解读必需基因功能（坐标型 ID 无此表时不可读）")
+    except Exception as e:
+        sys.stderr.write(f"[scan] gene_table WARN: {type(e).__name__}: {e}\n")
+    return result
+
+
+def essential_scan(model_path, medium=None, gene_subset=None, progress=None, ledger_path=None,
+                   gene_table=None):
     """全量必需基因扫描。返回 {wt, total_genes, tested, essential, essential_genes,
     predicted_viable, timeout_aborted, fva_seconds, knock_seconds}。"""
     m = silent_read_sbml(model_path)
@@ -138,6 +182,9 @@ def essential_scan(model_path, medium=None, gene_subset=None, progress=None, led
             path=ledger_path)
     except Exception as e:
         sys.stderr.write(f"[scan] ledger registration WARN: {type(e).__name__}: {e}\n")
+    # P1-4：关联基因注释表（坐标ID→locus_tag/product），让必需基因可解读
+    if result["wt_growth"] > EPS:
+        _attach_gene_table(result, gene_table)
     return result
 
 

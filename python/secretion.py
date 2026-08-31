@@ -43,7 +43,12 @@ def _envelope_for(m, bio, rxn, wt, fractions):
 
 
 def secretion(model_path, medium=None, fractions=None, export_csv=None,
-              ledger_refs=True, ledger_path=None, progress=None):
+              ledger_refs=True, ledger_path=None, progress=None,
+              mode="full", summary_top=20):
+    """可分泌代谢物谱。
+    P0-1（2026-08-31 LBA9402 会话实测）：full 模式 185KB 输出被引擎省略截断，agent 绕道 bio_python
+    又不被防火墙背书 -> 死锁。mode=summary（op 层默认）只返回 top N 可分泌物（不含 envelope）；
+    完整数据请 export_csv 落盘 CSV，返回里给 full_data_file 显式路径。全量语义保持 mode=full。"""
     log = progress or (lambda s: sys.stderr.write(str(s) + "\n"))
     medium = medium or {"medium_name": "AB"}
     fractions = sorted(fractions or GROWTH_FRACTIONS)
@@ -111,10 +116,22 @@ def secretion(model_path, medium=None, fractions=None, export_csv=None,
             sys.stderr.write(f"[secretion] ledger registration WARN: {type(e).__name__}: {e}\n")
 
     out.update({
+        "mode": mode,
         "secretable_count": len(feasible),
-        "results": rows,
         "timing_seconds": round(time.time() - t0, 1),
     })
+    if mode == "summary":
+        # P0-1：只返回 top N（瘦身：不含 envelope），防大输出省略截断
+        top = sorted(feasible, key=lambda r: r["max_prod"], reverse=True)[:summary_top]
+        slim = [{k: r[k] for k in ("rxn", "met_id", "name", "max_prod", "growth_at_max", "feasible")}
+                for r in top]
+        out["summary_top"] = len(slim)
+        out["summary_note"] = (f"summary 模式仅返回 top{len(slim)}（按 max_prod）可分泌条目，未内联 envelope 曲线；"
+                               f"完整 {len(feasible)} 条及 envelope 数据见 full_data_file（CSV）或用 mode=full。"
+                               f"本工具默认 summary 是为避免大输出被平台省略截断——不要在 summary 返回里找截断区数字。")
+        out["results"] = slim
+    else:
+        out["results"] = rows
     if reg is not None:
         out["ledger_registration"] = reg
     if export_csv:
@@ -122,7 +139,14 @@ def secretion(model_path, medium=None, fractions=None, export_csv=None,
         out["export_csv"] = export_csv
         out["export_csv_rows"] = n
         out["export_csv_bytes"] = os.path.getsize(export_csv)
+        # 数据位置显式置顶提示字段（P0-1：agent 不再需要从省略输出里找数字）
+        out["full_data_file"] = export_csv
+        out["full_data_file_note"] = "完整可分泌清单+envelope 曲线的权威文件（以上输出无论 summary/full 均指此为准）"
         log(f"[secretion] CSV {export_csv}: {n} rows")
+    elif mode == "summary":
+        out["full_data_file"] = None
+        out["full_data_file_note"] = ("本次未导出 CSV；需要完整可分泌清单请以 export_csv 参数指定落盘路径后重跑"
+                                      "（幂等，账本跳过重复）")
     return out
 
 

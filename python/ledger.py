@@ -217,20 +217,38 @@ def update_row(prediction_id, status=None, source_refs=None, comparison_refs=Non
             "corrupt_rows": len(corrupt)}
 
 
-def ledger_summary(path=None):
-    """gem_report 摘要用：{total, by_status, by_type, deprecated_count}；文件不存在 -> {total: 0}。"""
+def _norm_path(p):
+    """路径归一化（normcase+normpath），对齐 _content_hash——防正/反斜杠差异导致前缀匹配失败。"""
+    return os.path.normcase(os.path.normpath(p or ""))
+
+
+def ledger_summary(path=None, model=None):
+    """gem_report 摘要用：{total, by_status, by_type, by_model, deprecated_count}；模型不存在 -> {total: 0}。
+    P1-3 修复（2026-08-31 LBA9402 会话实测）：旧版只给全局 total，近八成记录属其他模型导致 agent 误报
+    「本模型账本 N 条」——按 model 参数给 by_model 分布 + own_model_entries（前缀匹配，同 query_ledger 语义）。"""
     rows, corrupt = load_rows(path or LEDGER_PATH)
-    by_status, by_type = {}, {}
+    by_status, by_type, by_model = {}, {}, {}
     dep = 0
+    own = 0
     for r in rows:
         s = r.get("status") or "unspecified"
         t = r.get("type") or "other"
+        mm = r.get("model") or ""
         by_status[s] = by_status.get(s, 0) + 1
         by_type[t] = by_type.get(t, 0) + 1
         if r.get("deprecated"):
             dep += 1
-    return {"total": len(rows), "by_status": by_status, "by_type": by_type,
-            "deprecated_count": dep, "corrupt_rows": len(corrupt)}
+        if mm:
+            by_model[mm] = by_model.get(mm, 0) + 1
+        if model and _norm_path(mm).startswith(_norm_path(model)):
+            own += 1
+    rep = {"total": len(rows), "by_status": by_status, "by_type": by_type,
+           "by_model": by_model, "deprecated_count": dep, "corrupt_rows": len(corrupt)}
+    if model:
+        rep["own_model_entries"] = own
+        rep["own_model_note"] = ("own_model_entries=该模型路径前缀匹配的账本条目数；"
+                                 "全局分布见 by_model（其余条目属其他模型，勿混为本模型预测）")
+    return rep
 
 
 # ---------------------------------------------------------------------------

@@ -101,7 +101,8 @@ export function registerTools(ctx) {
     description:
       '读取 SBML 代谢模型文件，输出模型摘要：基因/反应/代谢物/区室/复制子分布（多质粒/多染色体分离统计）、交换数。' +
       '用于快速检查模型文件是否可加载、规模、是否为多复制子。模型文件不存在或非有效 SBML 会明确报错。' +
-      '输出含 ledger_summary（预测账本基率摘要：total/by_status/by_type；可选 ledger_path 指向自定义账本）与基率披露语境。' +
+      '输出含 ledger_summary（预测账本基率摘要：total/by_status/by_type/by_model；传本工具 model 时含 own_model_entries=本模型条目数，' +
+      '防「把全局账本当作本模型预测」误读；可选 ledger_path 指向自定义账本）与基率披露语境。' +
       '触发词：看模型信息、模型摘要、有多少基因。',
     parameters: { model: { type: 'string', required: true, description: 'SBML 文件绝对路径' }, ledger_path: { type: 'string', description: '可选：预测账本 JSONL 路径（缺省 ~/.dsh/dsh-bio-gem/ledger/predictions.jsonl）' } },
     op: 'model_info',
@@ -208,17 +209,20 @@ export function registerTools(ctx) {
   disposers.push(ctx.tools.register(gemTool({
     name: 'gem_essentiality',
     description:
-      '对代谢模型做全量必需基因扫描：FVA（全范围）预筛出可通量的反应关联基因（死基因免敲，通常省 30-50% 计算），' +
-      '再对候选逐一手工敲除（with m: 循环）判定是否必需（敲除后生长<1e-6）。' +
-      'medium 推荐 {"medium_name": "AB"}。输出必需基因列表 + 数量 + wt 生长 + 耗时统计。' +
-      '结果可用于模型卡"必需基因"章节（对照文献/实验必需基因集即召回率）。' +
-      '生长/通量数值为单点 FBA 值（非硬结论）；条件间对比用 gem_fluxscan（区间制）。' +
-      '触发词：必需基因扫描、全量必要基因、essentiality scan、敲除全扫。',
-    parameters: {
-      model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
-      medium: { type: 'object', additionalProperties: true, description: '培养基：{"medium_name": "AB"} 或自然名成分字典' },
-      gene_subset: { type: 'array', items: { type: 'string' }, description: '可选：只扫描指定基因（限制范围）' },
-    },
+          '对代谢模型做全量必需基因扫描：FVA（全范围）预筛出可通量反应关联基因（死基因免敲，通常省 30-50% 计算），' +
+          '再对候选逐一手工敲除（with m: 循环）判定是否必需（敲除后生长<1e-6）。' +
+          'medium 推荐 {"medium_name": "AB"}。输出必需基因列表 + 数量 + wt 生长 + 耗时统计。' +
+          '若提供 gene_table（gem_annotate 返回的 <base>.gene_table.tsv），输出额外含 essential_gene_details（' +
+          '每必需基因带 locus_tag/product 功能注释——坐标型基因 ID 无此表时是不可解读的）。' +
+          '结果可用于模型卡"必需基因"章节（对照文献/实验必需基因集即召回率）。' +
+          '生长/通量数值为单点 FBA 值（非硬结论）；条件间对比用 gem_fluxscan（区间制）。' +
+          '触发词：必需基因扫描、全量必要基因、essentiality scan、敲除全扫。',
+        parameters: {
+          model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
+          medium: { type: 'object', additionalProperties: true, description: '培养基：{"medium_name": "AB"} 或自然名成分字典' },
+          gene_subset: { type: 'array', items: { type: 'string' }, description: '可选：只扫描指定基因（限制范围）' },
+          gene_table: { type: 'string', description: '可选：gem_annotate 返回的基因注释表 TSV（<base>.gene_table.tsv），提供则 essential_gene_details 带 locus_tag/product' },
+        },
     op: 'essential_scan',
     timeoutMs: 600_000,
   })))
@@ -229,7 +233,9 @@ export function registerTools(ctx) {
     description:
       '把细菌基因组核苷酸 FASTA（.fna）转成蛋白 FASTA（.faa），供 gem_build(CarveMe) 使用。' +
       '优先级：同目录 *_protein.faa（官方蛋白）→ 同目录 cds_from_genomic.fna 直译 → 同目录 *.gff 解析翻译 → pyrodigal 预测（兜底）。' +
-      '返回 {faa, source, stats}。触发词：注释、基因组转蛋白、建蛋白序列、pyrodigal。',
+      '返回 {faa, source, stats}；GFF 路径额外产出 gene_table（<base>.gene_table.tsv：坐标ID→locus_tag/product 基因注释表），' +
+      '传给 gem_essentiality 的 gene_table 参数即可让必需基因结果带功能注释。' +
+      '触发词：注释、基因组转蛋白、建蛋白序列、pyrodigal。',
     parameters: {
       fna: { type: 'string', required: true, description: '基因组核苷酸 fasta 绝对路径（.fna）' },
       out: { type: 'string', description: '输出蛋白 fasta 路径（缺省同目录 <base>.gem_annot.faa）' },
@@ -439,8 +445,10 @@ export function registerTools(ctx) {
     description:
       '可分泌代谢物谱（secretion）：对模型在指定介质下做 production envelope 扫描——候选=介质层两级策略导出的' +
       '交换反应（EX_ 型与 boundary 型模型都适用），固定生长分数 {0.25,0.5,0.75,0.9,0.99,1.0} 下最大化产物交换，' +
-      '任一分数下产物交换 >1e-6 判可分泌。输出每候选 {met_id, name, max_prod, growth_at_max, feasible, envelope[...]}，' +
-      'export_csv 全量落盘。**边界声明：未考虑毒性/渗透压/调控，纯拓扑/线性规划结果**——可分泌≠实际会分泌。' +
+      '任一分数下产物交换 >1e-6 判可分泌。**mode 默认 summary**：只返回 top20（按 max_prod）可分泌物 + 统计，' +
+      '不内联全量（防大输出被平台省略截断——不要在 summary 返回里找截断区数字）；' +
+      '完整 {met_id, name, max_prod, growth_at_max, feasible, envelope[...]} 请传 export_csv 落盘 CSV（返回里 full_data_file 指向该文件），' +
+      '或显式 mode=full（注意可能很大）。export_csv 全量落盘。**边界声明：未考虑毒性/渗透压/调控，纯拓扑/线性规划结果**——可分泌≠实际会分泌。' +
       '被测模型 wt<=EPS（介质下不生长，如 AB 预设对非根瘤菌模型）→ degenerate=true 不扫描不登记，提示介质适配。' +
       '每个可分泌代谢物自动登记账本 type=secretion（幂等）。' +
       '生长/通量数值为单点 FBA 口径（mmol/gDW/h）；条件间通量对比用 gem_fluxscan（区间制）。' +
@@ -449,7 +457,8 @@ export function registerTools(ctx) {
       model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
       medium: { type: 'object', additionalProperties: true, description: '分泌条件（缺省 {"medium_name": "AB"}）' },
       fractions: { type: 'array', items: { type: 'number' }, description: '生长分数网格（默认 [0.25,0.5,0.75,0.9,0.99,1.0]）' },
-      export_csv: { type: 'string', description: '全量 envelope CSV 落盘路径' },
+      mode: { type: 'string', enum: ['summary', 'full'], description: 'summary=默认，只返回 top20 可分泌物（防大输出省略）；full=全量含 envelope（可能被平台省略截断）；完整数据推荐 export_csv 落盘 CSV' },
+      export_csv: { type: 'string', description: '全量 envelope CSV 落盘路径（无论 mode 均写全量；返回 full_data_file 指向）' },
       ledger_refs: { type: 'boolean', description: '可分泌代谢物登记账本（默认 true；幂等）' },
       ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径' },
     },
