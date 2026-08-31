@@ -47,6 +47,8 @@ def targets(model_path=None, types=None, condition=None, ledger_path=None,
             export_format="csv", export_path=None, progress=None):
     log = progress or (lambda s: sys.stderr.write(str(s) + "\n"))
     import ledger as _ledger
+    if not ledger_path:
+        ledger_path = _ledger.model_ledger_path(model_path)  # 2026-08-31：默认=该模型自己的账本
     rows, corrupt = _ledger.load_rows(ledger_path)
     types = [TYPE_ALIASES.get(t, t) for t in (types or ["essentiality", "synthetic_lethal", "secretion"])]
     types = [t for t in types if t in TYPE_ORDER]
