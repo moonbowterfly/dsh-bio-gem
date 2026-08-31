@@ -66,10 +66,13 @@ def _pathway_gene_sets(m):
 
 def _ledger_essential_genes(model_path, ledger_path):
     import ledger as _ledger
+    if not ledger_path:
+        ledger_path = _ledger.model_ledger_path(model_path)  # 2026-08-31：默认=该模型自己的账本
     rows, corrupt = _ledger.load_rows(ledger_path)
     genes = []
     for r in rows:
-        if r.get("type") == "essentiality" and (r.get("model") or "") == (model_path or ""):
+        # 单模型账本语义：账本里都是该模型（basename 组，含路径变体）的预测，不再精确匹配 model
+        if r.get("type") == "essentiality":
             gid = (r.get("content") or "").split(" 在 ")[0].strip()
             if gid:
                 genes.append(gid)

@@ -1,17 +1,22 @@
 # ledger.py — 阶段A-M3 prediction ledger（预测账本，可追踪可实验兑现）
-# 文件: ~/.dsh/dsh-bio-gem/ledger/predictions.jsonl（追加式，行=一条预测；目录不存在则创建）
+# 文件: ~/.dsh/dsh-bio-gem/ledger/<模型名>.jsonl（一个模型一个账本，2026-08-31 用户决策）
+#       ——默认账本按模型文件 basename 推导（model_ledger_path），显式 ledger_path 仍可覆盖；
+#       ——无 model 无 path 的查询/摘要 = 聚合所有模型账本（全局视图，by_model 分布保留）。
+# 迁移：旧全局 predictions.jsonl 已拆分为各模型账本（predictions.jsonl.legacy-20260831 保留备份，
+#       不再作为活动账本）。
 # 幂等: 同 model+condition+type+content 哈希去重，重复运行不追加。
 # 完整性: 逐行 JSON 解析校验，损坏行跳过并在返回里报 corrupt_rows + 行号（不阻塞）；
 #         写入失败只 WARN 不使主流程失败。update 重写文件但保留损坏行原样（不删行）。
 # 证据分级优先级（任务书锁定）: EVIDENCE_literature > EVIDENCE_sequence > EVIDENCE_rule > EVIDENCE_math
 import os
+import re
 import sys
 import json
 import hashlib
 from datetime import datetime
 
 LEDGER_DIR = os.path.join(os.path.expanduser("~"), ".dsh", "dsh-bio-gem", "ledger")
-LEDGER_PATH = os.path.join(LEDGER_DIR, "predictions.jsonl")
+LEDGER_PATH = os.path.join(LEDGER_DIR, "predictions.jsonl")  # 兼容 fallback（迁移后非活动账本）
 
 TIER_PRIORITY = ["EVIDENCE_literature", "EVIDENCE_sequence", "EVIDENCE_rule", "EVIDENCE_math"]  # 高→低
 STATUSES = ("unverified", "literature_supported", "literature_contradicted", "experimentally_verified")
@@ -31,8 +36,39 @@ def _content_hash(model, condition, rtype, content):
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def _norm_path(p):
+    """路径归一化（normcase+normpath）——防正/反斜杠差异导致前缀匹配失败。"""
+    return os.path.normcase(os.path.normpath(p or ""))
+
+
+# ---------------------------------------------------------------------------
+# 账本文件解析：一个模型一个账本（2026-08-31 用户决策）
+# ---------------------------------------------------------------------------
+def model_ledger_path(model_path):
+    """默认账本 = ledger/<模型文件名去扩展名>.jsonl（一个模型一个账本）。"""
+    base = os.path.splitext(os.path.basename(model_path or ""))[0] or "default"
+    base = re.sub(r"[^A-Za-z0-9_.-]+", "_", base).strip("._") or "default"
+    return os.path.join(LEDGER_DIR, base + ".jsonl")
+
+
+def _ledger_file_list():
+    """活动账本文件：ledger/*.jsonl（排除旧全局 predictions.jsonl 与 .bak/.legacy 备份）。"""
+    if not os.path.isdir(LEDGER_DIR):
+        return []
+    files = []
+    for x in sorted(os.listdir(LEDGER_DIR)):
+        if not x.endswith(".jsonl"):
+            continue
+        if x == "predictions.jsonl":
+            continue  # 旧全局账本（迁移后仅作 legacy 备份，不算活动账本）
+        if ".bak" in x.lower() or ".legacy" in x.lower():
+            continue
+        files.append(os.path.join(LEDGER_DIR, x))
+    return files
+
+
 def load_rows(path=None):
-    """读全部行；损坏行跳过。返回 (rows, corrupt:[{line,error}])。文件不存在 -> ([], [])。"""
+    """读单个账本文件全部行；损坏行跳过。返回 (rows, corrupt:[{line,error}])。文件不存在 -> ([], [])。"""
     p = path or LEDGER_PATH
     rows, corrupt = [], []
     if not os.path.exists(p):
@@ -49,6 +85,25 @@ def load_rows(path=None):
     return rows, corrupt
 
 
+def load_all_rows():
+    """聚合所有活动账本（一个模型一个账本 -> 全局视图）。返回 (rows, corrupt)。"""
+    rows, corrupt = [], []
+    for f in _ledger_file_list():
+        r, c = load_rows(f)
+        rows.extend(r)
+        corrupt.extend(c)
+    return rows, corrupt
+
+
+def _resolve_rows(path=None, model=None):
+    """按路径/模型解析要读的账本行：显式 path > model 账本 > 聚合所有。"""
+    if path:
+        return load_rows(path)
+    if model:
+        return load_rows(model_ledger_path(model))
+    return load_all_rows()
+
+
 def _max_id_num(rows):
     mx = 0
     for r in rows:
@@ -59,8 +114,11 @@ def _max_id_num(rows):
 
 
 def register_predictions(new_rows, path=None):
-    """追加式登记（幂等）。返回 {appended, skipped_duplicates, total_after, corrupt_rows, path,
+    """追加式登记（幂等）。默认账本按新行 model 推导（一个模型一个账本）；path 显式则覆盖。
+    返回 {appended, skipped_duplicates, total_after, corrupt_rows, path,
     prediction_ids, warn}；写入失败仅 WARN（返回内附 warn 字段），绝不抛异常阻塞主流程。"""
+    if not path and new_rows:
+        path = model_ledger_path((new_rows[0] or {}).get("model"))
     p = path or LEDGER_PATH
     existing, corrupt = load_rows(p)
     seen = {_content_hash(r.get("model"), r.get("condition"), r.get("type"), r.get("content"))
@@ -102,11 +160,19 @@ def register_predictions(new_rows, path=None):
 def query_ledger(rtype=None, status=None, condition=None, model=None,
                  limit=None, offset=0, path=None, deprecated=None):
     """条件过滤（type/status/condition/model 前缀匹配、大小写不敏感、可组合）+ 分页。
+    账本定位：显式 path > model（该模型自己的账本）> 聚合所有模型账本。
     阶段D-P2：deprecated 过滤（True=仅打标行；False=仅未打标行；缺省=全部）。"""
-    rows, corrupt = load_rows(path or LEDGER_PATH)
+    rows, corrupt = _resolve_rows(path=path, model=model)
 
     def _pref(v, q):
         return str(v or "").lower().startswith(str(q).lower())
+
+    def _pref_model(v, q):
+        # 模型匹配：路径前缀（归一化斜杠/大小写）或 basename 相同（一个模型一个账本的身份=模型名）
+        v, q = v or "", q or ""
+        if _norm_path(v).startswith(_norm_path(q)):
+            return True
+        return os.path.splitext(os.path.basename(v))[0] == os.path.splitext(os.path.basename(q))[0]
 
     def _dep(r):
         return bool(r.get("deprecated"))
@@ -115,7 +181,7 @@ def query_ledger(rtype=None, status=None, condition=None, model=None,
             if (not rtype or _pref(r.get("type"), rtype))
             and (not status or _pref(r.get("status"), status))
             and (not condition or _pref(r.get("condition"), condition))
-            and (not model or _pref(r.get("model"), model))
+            and (not model or _pref_model(r.get("model"), model))
             and (deprecated is None or _dep(r) == bool(deprecated))]
     sliced = hits[offset:] if not limit else hits[offset:offset + limit]
     return {"total": len(rows), "matched": len(hits), "offset": offset,
@@ -125,60 +191,64 @@ def query_ledger(rtype=None, status=None, condition=None, model=None,
 def mark_deprecated_duplicates(path=None, progress=None):
     """阶段D-P2：跨斜杠风格重复打标（一次性运维用；不删行、不改既有字段）。
     识别规则：同一归一化 content hash 的行组内，model 含反斜杠且存在正斜杠同预测 -> 打标
-    deprecated=true + superseded_by=<正斜杠版 prediction_id>。返回计数。"""
-    p = path or LEDGER_PATH
-    rows, corrupt = load_rows(p)
-    by_hash = {}
-    for r in rows:
-        h = _content_hash(r.get("model"), r.get("condition"), r.get("type"), r.get("content"))
-        by_hash.setdefault(h, []).append(r)
-    marks = {}
-    for group in by_hash.values():
-        if len(group) < 2:
-            continue
-        keepers = [r for r in group if "\\" not in (r.get("model") or "")]
-        dupes = [r for r in group if "\\" in (r.get("model") or "")]
-        if not keepers or not dupes:
-            continue
-        keeper = sorted(keepers, key=lambda r: r.get("prediction_id") or "")[0]
-        for d in dupes:
-            marks[d.get("prediction_id")] = keeper.get("prediction_id")
-    marked = 0
-    if marks:
-        with open(p, encoding="utf-8") as f:
-            lines = f.readlines()
-        with open(p, "w", encoding="utf-8", newline="") as f:
-            for line in lines:
-                stripped = line.strip()
-                try:
-                    obj = json.loads(stripped)
-                except Exception:
-                    f.write(line)  # 损坏行原样保留
-                    continue
-                pid = obj.get("prediction_id") if isinstance(obj, dict) else None
-                if pid in marks and not obj.get("deprecated"):
-                    obj["deprecated"] = True
-                    obj["deprecated_note"] = (f"Windows 路径斜杠风格重复；同预测见 "
-                                              f"prediction_id {marks[pid]}（正斜杠版）")
-                    obj["superseded_by"] = marks[pid]
-                    f.write(json.dumps(obj, ensure_ascii=False) + "\n")
-                    marked += 1
-                else:
-                    f.write(line if line.endswith("\n") else line + "\n")
-    if progress:
-        progress(f"[ledger] marked {marked} deprecated rows (of {len(rows)})")
-    return {"path": p, "marked": marked, "rows_total": len(rows),
-            "corrupt_rows": len(corrupt)}
+    deprecated=true + superseded_by=<正斜杠版 prediction_id>。path=None 时对每个活动账本执行。
+    返回聚合计数。"""
+    files = [path] if path else _ledger_file_list()
+    total = {"path": None, "marked": 0, "rows_total": 0, "corrupt_rows": 0, "per_file": {}}
+    for p in files:
+        rows, corrupt = load_rows(p)
+        by_hash = {}
+        for r in rows:
+            h = _content_hash(r.get("model"), r.get("condition"), r.get("type"), r.get("content"))
+            by_hash.setdefault(h, []).append(r)
+        marks = {}
+        for group in by_hash.values():
+            if len(group) < 2:
+                continue
+            keepers = [r for r in group if "\\" not in (r.get("model") or "")]
+            dupes = [r for r in group if "\\" in (r.get("model") or "")]
+            if not keepers or not dupes:
+                continue
+            keeper = sorted(keepers, key=lambda r: r.get("prediction_id") or "")[0]
+            for d in dupes:
+                marks[d.get("prediction_id")] = keeper.get("prediction_id")
+        marked = 0
+        if marks:
+            with open(p, encoding="utf-8") as f:
+                lines = f.readlines()
+            with open(p, "w", encoding="utf-8", newline="") as f:
+                for line in lines:
+                    stripped = line.strip()
+                    try:
+                        obj = json.loads(stripped)
+                    except Exception:
+                        f.write(line)  # 损坏行原样保留
+                        continue
+                    pid = obj.get("prediction_id") if isinstance(obj, dict) else None
+                    if pid in marks and not obj.get("deprecated"):
+                        obj["deprecated"] = True
+                        obj["deprecated_note"] = (f"Windows 路径斜杠风格重复；同预测见 "
+                                                  f"prediction_id {marks[pid]}（正斜杠版）")
+                        obj["superseded_by"] = marks[pid]
+                        f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+                        marked += 1
+                    else:
+                        f.write(line if line.endswith("\n") else line + "\n")
+        if progress:
+            progress(f"[ledger] {os.path.basename(p)}: marked {marked} deprecated rows (of {len(rows)})")
+        total["marked"] += marked
+        total["rows_total"] += len(rows)
+        total["corrupt_rows"] += len(corrupt)
+        total["per_file"][os.path.basename(p)] = {"marked": marked, "rows": len(rows)}
+    total["path"] = path or LEDGER_DIR
+    return total
 
 
-def update_row(prediction_id, status=None, source_refs=None, comparison_refs=None, path=None):
-    """按 prediction_id 更新 status/source_refs/comparison_refs，维护 updated_at。
-    文件重写但逐行保留（损坏行原样保留，不删行）。"""
-    p = path or LEDGER_PATH
-    if status is not None and status not in STATUSES:
-        return {"ok": False, "error": f"invalid status {status!r}（{STATUSES}）"}
+def _update_file(prediction_id, p, status=None, source_refs=None, comparison_refs=None):
+    """单文件内按 prediction_id 更新 status/source_refs/comparison_refs，维护 updated_at。
+    文件重写但逐行保留（损坏行原样保留，不删行）。文件不存在 -> None（调用方继续找）。"""
     if not os.path.exists(p):
-        return {"ok": False, "error": f"ledger not found: {p}"}
+        return None
     rows, corrupt = load_rows(p)
     found = 0
     updated_row = None
@@ -206,7 +276,7 @@ def update_row(prediction_id, status=None, source_refs=None, comparison_refs=Non
                 except Exception:
                     f.write(line)  # 损坏行原样保留（不删行）
                     continue
-                if isinstance(obj, dict) and obj.get("prediction_id") == prediction_id and found:
+                if isinstance(obj, dict) and obj.get("prediction_id") == prediction_id:
                     f.write(json.dumps(updated_row, ensure_ascii=False) + "\n")
                     found -= 1
                 else:
@@ -217,19 +287,36 @@ def update_row(prediction_id, status=None, source_refs=None, comparison_refs=Non
             "corrupt_rows": len(corrupt)}
 
 
-def _norm_path(p):
-    """路径归一化（normcase+normpath），对齐 _content_hash——防正/反斜杠差异导致前缀匹配失败。"""
-    return os.path.normcase(os.path.normpath(p or ""))
+def update_row(prediction_id, status=None, source_refs=None, comparison_refs=None, path=None):
+    """按 prediction_id 更新。显式 path 定位单文件；path=None 时遍历所有活动账本找 id
+    （各账本独立编号后 prediction_id 只在账本内唯一——全局扫确保能找到）。"""
+    if status is not None and status not in STATUSES:
+        return {"ok": False, "error": f"invalid status {status!r}（{STATUSES}）"}
+    if path:
+        return _update_file(prediction_id, path, status=status,
+                            source_refs=source_refs, comparison_refs=comparison_refs)
+    files = _ledger_file_list()
+    if os.path.exists(LEDGER_PATH) and LEDGER_PATH not in files:
+        files = files + [LEDGER_PATH]  # 兼容旧全局账本（若还在）
+    for f in files:
+        r = _update_file(prediction_id, f, status=status,
+                         source_refs=source_refs, comparison_refs=comparison_refs)
+        if r is not None:
+            return r
+    return {"ok": False, "error": f"prediction_id not found: {prediction_id} (no ledger file contains it)"}
 
 
 def ledger_summary(path=None, model=None):
-    """gem_report 摘要用：{total, by_status, by_type, by_model, deprecated_count}；模型不存在 -> {total: 0}。
-    P1-3 修复（2026-08-31 LBA9402 会话实测）：旧版只给全局 total，近八成记录属其他模型导致 agent 误报
-    「本模型账本 N 条」——按 model 参数给 by_model 分布 + own_model_entries（前缀匹配，同 query_ledger 语义）。"""
-    rows, corrupt = load_rows(path or LEDGER_PATH)
+    """账本摘要：{total, by_status, by_type, by_model, deprecated_count}。
+    账本定位：显式 path > model（该模型自己的账本）> 聚合所有模型账本。
+    P1-3（2026-08-31）：按模型给 own_model_entries=该模型账本条数，防「把全局账本当作本模型预测」误读。
+    2026-08-31 用户决策后：一个模型一个账本，model 定位时 total 即该模型预测数。"""
+    rows, corrupt = _resolve_rows(path=path, model=model)
     by_status, by_type, by_model = {}, {}, {}
     dep = 0
-    own = 0
+    own = None
+    if model:
+        own = len(rows)  # 该模型账本的行数（一个模型一个账本）
     for r in rows:
         s = r.get("status") or "unspecified"
         t = r.get("type") or "other"
@@ -240,14 +327,13 @@ def ledger_summary(path=None, model=None):
             dep += 1
         if mm:
             by_model[mm] = by_model.get(mm, 0) + 1
-        if model and _norm_path(mm).startswith(_norm_path(model)):
-            own += 1
     rep = {"total": len(rows), "by_status": by_status, "by_type": by_type,
            "by_model": by_model, "deprecated_count": dep, "corrupt_rows": len(corrupt)}
-    if model:
+    if model is not None or own is not None:
         rep["own_model_entries"] = own
-        rep["own_model_note"] = ("own_model_entries=该模型路径前缀匹配的账本条目数；"
-                                 "全局分布见 by_model（其余条目属其他模型，勿混为本模型预测）")
+        rep["own_model_note"] = ("own_model_entries=该模型账本条数（一个模型一个账本："
+                                 "账本文件按模型名分，这里就是本模型预测全量；"
+                                 "聚合视图的全局分布见 by_model/其他账本）")
     return rep
 
 
@@ -269,7 +355,8 @@ def best_evidence_tier(reactions, default=DEFAULT_TIER):
 
 def register_essentiality(model_path, scan_result, model=None, condition=None,
                           lineage_version=None, path=None):
-    """gem_essentiality 自动登记：每必需基因一条（type=essentiality，status=unverified）。"""
+    """gem_essentiality 自动登记：每必需基因一条（type=essentiality，status=unverified）。
+    path=None 时按 model_path 写入该模型的账本（model_ledger_path）。"""
     rows = []
     for gid in (scan_result or {}).get("essential_genes") or []:
         tier, defaulted = DEFAULT_TIER, True
@@ -288,8 +375,8 @@ def register_essentiality(model_path, scan_result, model=None, condition=None,
             "status": "unverified",
             "source_refs": [],
             "comparison_refs": [],
-            **({"evidence_note": "支撑反应无 evidence 标注，默认 EVIDENCE_rule"}
-               if defaulted else {}),
+            **( {"evidence_note": "支撑反应无 evidence 标注，默认 EVIDENCE_rule"}
+                if defaulted else {}),
         })
     return register_predictions(rows, path)
 
@@ -322,8 +409,8 @@ def register_phenotype(model_path, g4_results, condition=None, lineage_version=N
             "status": "unverified",
             "source_refs": [],
             "comparison_refs": [],
-            **({"evidence_note": "底物交换反应无 evidence 标注，默认 EVIDENCE_rule"}
-               if defaulted else {}),
+            **( {"evidence_note": "底物交换反应无 evidence 标注，默认 EVIDENCE_rule"}
+                if defaulted else {}),
         })
     return register_predictions(rows, path)
 
@@ -438,6 +525,31 @@ if __name__ == "__main__":
         assert q_ok["matched"] == 3  # 原始 3 条 essentiality 不受影响
         s3 = ledger_summary(path=p)
         assert s3["deprecated_count"] == 1 and s3["total"] == n_before + 1, s3
+        # 2026-08-31：一个模型一个账本——model_ledger_path 按 basename 推导
+        assert model_ledger_path("F:/x/C58.xml") == os.path.join(LEDGER_DIR, "C58.jsonl")
+        assert model_ledger_path("C:\\Users\\u\\.dsh\\dsh-bio-gem\\models\\LBA9402.xml") == \
+            os.path.join(LEDGER_DIR, "LBA9402.jsonl")
+        assert model_ledger_path("") == os.path.join(LEDGER_DIR, "default.jsonl")
+        # register path=None -> 该模型账本文件
+        dir2 = tempfile.mkdtemp(prefix="ledger-selftest-")
+        import importlib
+        _ld = os.path.dirname(os.path.abspath(__file__))
+        import tempfile as _tf
+        # 用临时目录覆盖 LEDGER_DIR 验证默认推导（不污染真实账本）
+        old_dir = LEDGER_DIR
+        try:
+            ledger_mod = sys.modules[__name__]
+            ledger_mod.LEDGER_DIR = dir2
+            ledger_mod.LEDGER_PATH = os.path.join(dir2, "predictions.jsonl")
+            rn = register_predictions([mk(1)])
+            assert rn["appended"] == 1 and rn["path"] == os.path.join(dir2, "m.jsonl"), rn
+            qn = query_ledger(model="F:/m.xml")
+            assert qn["total"] == 1 and qn["matched"] == 1, qn
+            sn = ledger_summary(model="F:/m.xml")
+            assert sn["total"] == 1 and sn["own_model_entries"] == 1, sn
+        finally:
+            ledger_mod.LEDGER_DIR = old_dir
+            ledger_mod.LEDGER_PATH = os.path.join(old_dir, "predictions.jsonl")
         print(json.dumps({"ok": True, "result": {"selftest": "pass", "summary": s3}}))
     else:
         args = {}
@@ -463,6 +575,7 @@ if __name__ == "__main__":
                 source_refs=a.get("source_refs"), comparison_refs=a.get("comparison_refs"),
                 path=lp)}, ensure_ascii=False))
         elif action == "summary":
-            print(json.dumps({"ok": True, "result": ledger_summary(path=lp)}, ensure_ascii=False))
+            print(json.dumps({"ok": True, "result": ledger_summary(
+                path=lp, model=a.get("model"))}, ensure_ascii=False))
         else:
             print(json.dumps({"ok": False, "error": f"unknown ledger action: {action}（list|query|update|summary）"}))

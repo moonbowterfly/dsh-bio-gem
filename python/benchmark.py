@@ -532,14 +532,16 @@ def benchmark(model_a, model_b, medium=None, phenotype_table=None, reference_ess
             0, "无 EX_ 前缀交换层（boundary 单代谢物反应充当交换），介质层按两级策略回退（boundary_style=true）")
 
     # ⑤ 账本回填（update 语义幂等；全账本基因一次映射）
+    # 2026-08-31：一个模型一个账本——ledger_path 缺省 = 模型 A 自己的账本
     refs_stats = None
     if ledger_refs:
         import ledger as _ledger_mod
-        rows, _ = _ledger_mod.load_rows(ledger_path)
+        lp = ledger_path or _ledger_mod.model_ledger_path(model_a)
+        rows, _ = _ledger_mod.load_rows(lp)
         a_genes = sorted({(r.get("content") or "").split(" 在 ")[0].strip()
                           for r in rows if r.get("type") == "essentiality"})
         mp_all = map_genes(a_genes, silent_read_sbml(model_b))
-        refs_stats = backfill_ledger(ledger_path, model_b, b_set, ess["b_degenerate"],
+        refs_stats = backfill_ledger(lp, model_b, b_set, ess["b_degenerate"],
                                      mp_all["mapping"], (pheno or {}).get("table"), log)
         log(f"[bench] ledger backfill: {json.dumps(refs_stats, ensure_ascii=False)}")
 

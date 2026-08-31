@@ -74,22 +74,16 @@ def op_model_info(args):
     ledger_summary, ledger_context = None, None
     try:
         import ledger as _ledger
+        # 2026-08-31：一个模型一个账本——缺省（无 ledger_path）定位到该模型自己的账本
         ledger_summary = _ledger.ledger_summary(path=args.get("ledger_path"), model=path)
         n_unverified = ledger_summary["by_status"].get("unverified", 0)
         own = ledger_summary.get("own_model_entries")
         if ledger_summary["total"]:
-            if own is not None:
-                ledger_context = (f"预测账本共 {ledger_summary['total']} 条，其中本模型 {own} 条"
-                                  f"（own_model_entries；其余属其他模型，by_model 见上），"
-                                  f"{n_unverified} 条 unverified："
-                                  "全部为模型推导预测（essentiality/phenotype 等），实验或文献兑现前不应当作事实引用；"
-                                  "状态分布即预测可信度基率，回填后 by_status 向 literature_supported/"
-                                  "experimentally_verified 迁移。")
-            else:
-                ledger_context = (f"预测账本共 {ledger_summary['total']} 条（其中 {n_unverified} 条 unverified）："
-                                  "全部为模型推导预测（essentiality/phenotype 等），实验或文献兑现前不应当作事实引用；"
-                                  "状态分布即预测可信度基率，回填后 by_status 向 literature_supported/"
-                                  "experimentally_verified 迁移。")
+            ledger_context = (f"预测账本：本模型 {own} 条（一个模型一个账本，账本文件按模型名分），"
+                              f"{n_unverified} 条 unverified："
+                              "全部为模型推导预测（essentiality/phenotype 等），实验或文献兑现前不应当作事实引用；"
+                              "状态分布即预测可信度基率，回填后 by_status 向 literature_supported/"
+                              "experimentally_verified 迁移。")
     except Exception as e:
         ledger_summary = {"error": str(e)[:120]}
     return {"ok": True, "result": {

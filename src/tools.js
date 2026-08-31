@@ -101,10 +101,11 @@ export function registerTools(ctx) {
     description:
       '读取 SBML 代谢模型文件，输出模型摘要：基因/反应/代谢物/区室/复制子分布（多质粒/多染色体分离统计）、交换数。' +
       '用于快速检查模型文件是否可加载、规模、是否为多复制子。模型文件不存在或非有效 SBML 会明确报错。' +
-      '输出含 ledger_summary（预测账本基率摘要：total/by_status/by_type/by_model；传本工具 model 时含 own_model_entries=本模型条目数，' +
-      '防「把全局账本当作本模型预测」误读；可选 ledger_path 指向自定义账本）与基率披露语境。' +
+      '输出含 ledger_summary（预测账本基率摘要：total/by_status/by_type/by_model；一个模型一个账本——' +
+      '传本工具 model 时读该模型自己的账本，own_model_entries=本模型条目数=账本总数，不再混其他模型预测；' +
+      '可选 ledger_path 指向自定义账本）与基率披露语境。' +
       '触发词：看模型信息、模型摘要、有多少基因。',
-    parameters: { model: { type: 'string', required: true, description: 'SBML 文件绝对路径' }, ledger_path: { type: 'string', description: '可选：预测账本 JSONL 路径（缺省 ~/.dsh/dsh-bio-gem/ledger/predictions.jsonl）' } },
+    parameters: { model: { type: 'string', required: true, description: 'SBML 文件绝对路径' }, ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径（缺省=该模型的账本 ~/.dsh/dsh-bio-gem/ledger/<模型名>.jsonl）' } },
     op: 'model_info',
   })))
 
@@ -385,10 +386,11 @@ export function registerTools(ctx) {
   disposers.push(ctx.tools.register(gemTool({
     name: 'gem_ledger',
     description:
-      '预测账本（prediction ledger）：gem_essentiality（每必需基因一条）与 gem_phenotype（每底物一条 G4 结果）' +
-      '自动登记的所有模型推导预测都在账本里（追加式 JSONL，幂等去重，同 model+condition+type+content 不重复入账）。' +
+      '预测账本（prediction ledger）：一个模型一个账本——账本文件按模型名分（ledger/<模型名>.jsonl），' +
+      'gem_essentiality（每必需基因一条）与 gem_phenotype（每底物一条 G4 结果）等自动登记到对应模型的账本（追加式 JSONL，幂等去重，' +
+      '同 model+condition+type+content 不重复入账）。' +
       'action=list 分页列出（limit/offset，返回 total）；action=query 条件过滤（type/status/condition/model ' +
-      '前缀匹配，可组合）；action=update 按 prediction_id 改 status（unverified/literature_supported/' +
+      '前缀匹配，可组合；传 model 则定位到该模型自己的账本，不传则聚合所有模型账本=全局视图）；action=update 按 prediction_id 改 status（unverified/literature_supported/' +
       'literature_contradicted/experimentally_verified）/source_refs/comparison_refs（维护 updated_at）。' +
       '只读/追加/更新，不删行；损坏行跳过并报 corrupt_rows 不阻塞。' +
       '账本预测默认 status=unverified——实验或文献兑现前不应当作事实引用（基率披露见 gem_report 的 ledger_summary）。' +
@@ -405,7 +407,7 @@ export function registerTools(ctx) {
       prediction_id: { type: 'string', description: 'update 用：预测 ID（如 P0001）' },
       source_refs: { type: 'array', items: { type: 'string' }, description: 'update 用：文献/实验来源引用列表' },
       comparison_refs: { type: 'array', items: { type: 'string' }, description: 'update 用：对照记录引用' },
-      ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径（缺省 ~/.dsh/dsh-bio-gem/ledger/predictions.jsonl）' },
+      ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径（缺省=该模型的账本 ~/.dsh/dsh-bio-gem/ledger/<模型名>.jsonl）' },
     },
     op: 'ledger',
     timeoutMs: 60_000,
@@ -433,7 +435,7 @@ export function registerTools(ctx) {
       essential_full: { type: 'boolean', description: 'true=全量必需性对比（各 ~50s）；false=抽检 40（G5 口径，默认）' },
       ledger_refs: { type: 'boolean', description: '对比后回填账本 comparison_refs（默认 true；幂等可重入）' },
       export_md: { type: 'string', description: '论文级 Markdown 落盘路径' },
-      ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径（缺省 ~/.dsh/dsh-bio-gem/ledger/predictions.jsonl）' },
+      ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径（缺省=该模型的账本 ~/.dsh/dsh-bio-gem/ledger/<模型名>.jsonl）' },
     },
     op: 'benchmark',
     timeoutMs: 1_200_000,
@@ -460,7 +462,7 @@ export function registerTools(ctx) {
       mode: { type: 'string', enum: ['summary', 'full'], description: 'summary=默认，只返回 top20 可分泌物（防大输出省略）；full=全量含 envelope（可能被平台省略截断）；完整数据推荐 export_csv 落盘 CSV' },
       export_csv: { type: 'string', description: '全量 envelope CSV 落盘路径（无论 mode 均写全量；返回 full_data_file 指向）' },
       ledger_refs: { type: 'boolean', description: '可分泌代谢物登记账本（默认 true；幂等）' },
-      ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径' },
+      ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径（缺省=该模型的账本 <模型名>.jsonl）' },
     },
     op: 'secretion',
     timeoutMs: 900_000,
@@ -484,7 +486,7 @@ export function registerTools(ctx) {
       max_pairs: { type: 'integer', description: '全扫预算上限（默认 5000 对；超限截断并报告）' },
       export_csv: { type: 'string', description: '合成致死对 CSV 落盘路径' },
       ledger_refs: { type: 'boolean', description: '合成致死对登记账本（默认 true；幂等）' },
-      ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径' },
+      ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径（缺省=该模型的账本 <模型名>.jsonl）' },
     },
     op: 'double_knockout',
     timeoutMs: 1_200_000,
@@ -505,7 +507,7 @@ export function registerTools(ctx) {
       gene_list: { type: 'array', items: { type: 'string' }, description: '可选：基因列表（缺省从账本 essentiality 预测读取）' },
       pathway_source: { type: 'string', description: '通路注释源（缺省 groups=SBML groups）' },
       export_csv: { type: 'string', description: '富集表 CSV 落盘路径' },
-      ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径（gene_list 缺省来源）' },
+      ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径（缺省=该模型的账本 <模型名>.jsonl；gene_list 缺省来源）' },
     },
     op: 'enrichment',
     timeoutMs: 300_000,
@@ -527,7 +529,7 @@ export function registerTools(ctx) {
       condition: { type: 'string', description: '可选：条件过滤（精确匹配，如 AB）' },
       export_format: { type: 'string', enum: ['csv', 'json'], description: '导出格式（默认 csv）' },
       export_path: { type: 'string', description: '落盘路径（缺省 ~/.dsh/dsh-bio-gem/exports/targets_<ts>.<ext>）' },
-      ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径' },
+      ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径（缺省=该模型的账本 <模型名>.jsonl）' },
     },
     op: 'targets',
     timeoutMs: 120_000,
