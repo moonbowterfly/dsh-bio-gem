@@ -1,7 +1,18 @@
 {
-  "name": "dsh-bio-gem",
-  "version": "0.1.1",
+  "name": "@dsh-bio/dsh-bio-gem",
+  "version": "0.1.2",
   "description": "基因组尺度代谢模型（GEM）构建插件：输入细菌全基因组（蛋白FASTA，支持多质粒/多染色体），自动构建+验证+补洞+出报告（SBML + 模型卡），供 dsh-bio-genie 消费工具加载使用 | Genome-scale metabolic model builder for dsh",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/moonbowterfly/dsh-bio-gem.git"
+  },
+  "homepage": "https://github.com/moonbowterfly/dsh-bio-gem",
+  "bugs": {
+    "url": "https://github.com/moonbowterfly/dsh-bio-gem/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "index.js",
   "exports": {

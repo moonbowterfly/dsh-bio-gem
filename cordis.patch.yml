@@ -4,4 +4,4 @@
 
 - insert:
     - id: dsh-bio-gem
-      name: 'dsh-bio-gem'
+      name: '@dsh-bio/dsh-bio-gem'

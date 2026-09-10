@@ -6,7 +6,7 @@ Genome-scale metabolic model builder for dsh: genome in, validated SBML out.
 
 ## 📦 安装
 
-本插件以 **GitHub 源**分发（纯 ESM，无构建步骤，可直接加载）；npm 包尚未发布。
+本插件已发布为 npm 包 **`@dsh-bio/dsh-bio-gem`**（纯 ESM，无构建步骤），也可直接从 GitHub 源或本地目录安装。
 
 ### 0. 环境要求
 
@@ -24,16 +24,20 @@ Genome-scale metabolic model builder for dsh: genome in, validated SBML out.
 ### 1. 安装插件
 
 ```sh
-# 从 GitHub 安装（推荐）
+# 方式一：从 npm 安装（推荐，已发布预置包）
+npx -y @deepseek-ai/dsh plugin --profile web add @dsh-bio/dsh-bio-gem
+
+# 方式二：从 GitHub 安装（拉源码；本插件纯 ESM 无构建步骤，可直接加载）
 npx -y @deepseek-ai/dsh plugin --profile web add github:moonbowterfly/dsh-bio-gem
 
-# 从本地目录安装（开发调试）
+# 方式三：从本地目录安装（开发调试）
 npx -y @deepseek-ai/dsh plugin --profile web add ./dsh-bio-gem
 ```
 
 - 本机若已全局安装 dsh CLI，把 `npx -y @deepseek-ai/dsh` 换成 `dsh` 即可。
 - `--profile <name>` 是**必填选项**（不传报 `required option '--profile <name>' not specified`）；Web 端固定用 `web`。
 - 安装完**重启 dsh web 服务**（关掉原窗口，重新双击启动入口）。
+- 版本刚发布时可能短时间拉不到：registry 首次分发有几分钟延迟，`pnpm` 还可能缓存住 404。遇到 `ERR_PNPM_FETCH_404 ... is not in the npm registry` 时等几分钟重试，或在命令末尾追加 `--registry https://registry.npmjs.org/` 绕过缓存。
 
 验证插件层已生效（不用启动服务）：
 
@@ -122,7 +126,8 @@ npx -y @deepseek-ai/dsh plugin --profile web remove dsh-bio-gem
 
 ```sh
 # 1) install the plugin into the web profile, then restart dsh
-npx -y @deepseek-ai/dsh plugin --profile web add github:moonbowterfly/dsh-bio-gem
+npx -y @deepseek-ai/dsh plugin --profile web add @dsh-bio/dsh-bio-gem
+# (or from source: github:moonbowterfly/dsh-bio-gem)
 
 # 2) analysis Python needs cobra (+ pyrodigal for the annotation fallback)
 uv venv --python 3.11 "$HOME/.dsh/dsh-bio-gem/venv"
