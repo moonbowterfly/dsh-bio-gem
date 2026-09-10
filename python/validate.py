@@ -187,20 +187,37 @@ class Validator:
         全关交换后最大化 ATP 代谢物的净消耗（demand），通量 > 0.01 → WARN。
         补洞后必跑（context.post_gapfill 时不再跳过）。
         P1-5 修复（2026-08-31 LBA9402 会话实测）：CarveMe 模型 ATP id 为 M_atp_c，
-        旧匹配只看 atp_c/cpd00002_c0 -> 误 SKIP「未找到 ATP」——扩展命名模式 + SKIP 时列出尝试模式与模型内候选。"""
+        旧匹配只看 atp_c/cpd00002_c0 -> 误 SKIP「未找到 ATP」——扩展命名模式 + SKIP 时列出尝试模式与模型内候选。
+        P2-9 修复（2026-09-10 iNX1344 E2E 实测）：MetaCyc/BioCyc 导出模型 ATP 为 M00002_c
+        （name='ATP'，formula 为去质子化变体），仍不在模式表内 → 二次误 SKIP（G6 直接失效）。
+        改为三级通用解析：id 模式 → name 匹配 → formula 匹配，跨 ID 体系自适应。"""
         m = self.m
-        atp_patterns = ("atp_c", "cpd00002_c0", "m_atp_c", "atp_c0", "cpd00002", "atp")
+        atp_patterns = ("atp_c", "cpd00002_c0", "m_atp_c", "atp_c0", "cpd00002", "atp",
+                        "m00002", "m00002_c", "m00002_c0")
         cands = [x for x in m.metabolites if (x.id or "").lower() in atp_patterns]
+        atp_source = "id_pattern"
+        if not cands:
+            # 回退 1：name 匹配（跨 ID 体系最稳的信号；排除 dATP 等衍生物）
+            cands = [x for x in m.metabolites
+                     if (x.name or "").strip().upper() == "ATP"
+                     or ("atp" in (x.name or "").lower() and "datp" not in (x.name or "").lower())]
+            atp_source = "name_match"
+        if not cands:
+            # 回退 2：分子式（含去质子化变体——部分模型 formula 非标准形式）
+            cands = [x for x in m.metabolites
+                     if (x.formula or "").replace(" ", "") in ("C10H16N5O13P3", "C10H12N5O13P3")]
+            atp_source = "formula_match"
         cyto = [x for x in cands if x.compartment in ("c0", "c")]
         atp_c = (cyto or cands or [None])[0]
         if atp_c is None:
-            atp_like = sorted({x.id for x in m.metabolites if "atp" in (x.id or "").lower()})[:10]
+            atp_like = sorted({x.id for x in m.metabolites
+                               if "atp" in (x.id or "").lower() or "atp" in (x.name or "").lower()})[:10]
             return {"status": "SKIP",
-                    "reason": "未找到 ATP 代谢物（已尝试命名模式: " + ", ".join(atp_patterns) + "）",
+                    "reason": "未找到 ATP 代谢物（id 模式 / name 匹配 / formula 匹配三级回退均未命中）",
                     "tried_patterns": list(atp_patterns),
                     "atp_like_ids_in_model": atp_like,
-                    "note": "SKIP 系命名口径未命中（非模型缺陷证明）；若模型含 ATP 但 id 不在尝试模式中，"
-                            "补充模式或标注 atp 角色后重跑"}
+                    "note": "SKIP 系命名口径未命中（非模型缺陷证明）；若模型含 ATP 但三级回退均未命中，"
+                            "请在模型内显式标注 atp 角色后重跑"}
         dm = cobra.Reaction("DM_gem_atp_leak", name="G6 ATP 泄漏检测 demand",
                             lower_bound=0.0, upper_bound=1000.0)
         dm.add_metabolites({atp_c: -1})
@@ -216,7 +233,7 @@ class Validator:
         leak = abs(v)
         status = "PASS" if leak <= 0.01 else "WARN"
         return {"status": status, "atp_leak_flux": round(leak, 6),
-                "atp_metabolite_found": atp_c.id,
+                "atp_metabolite_found": atp_c.id, "atp_resolved_by": atp_source,
                 "threshold": 0.01, "post_gapfill": bool((context or {}).get("post_gapfill")),
                 "note": "全关交换后 ATP demand 通量应≈0；>0.01 提示能量循环泄漏（L3 MILP 补洞最可能引入）"}
 
