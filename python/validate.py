@@ -347,10 +347,14 @@ class Validator:
             reference_growth=None, reference_essential=None, carbon_mode="supplement",
             context=None):
         from gapfind import resolve_medium, expand_medium
+        from coherence import model_coherence
         medium, _preset = expand_medium(medium)
         resolved_med, unresolved = resolve_medium(self.m, medium) if medium else ({}, [])
         report = {"model": self.path,
                   "units": {"growth": "mmol/gDW/h", "note": "objective_value 是 FBA 通量（mmol/gDW/h），不是比生长速率 μ（h⁻¹）"},
+                  # G0 模型数据质量前置诊断：未映射前体等数据问题会让 G2/G3 与 gapfind 的
+                  # 结论失真（实测 iNX1344_v3：gapfind 报的 5 个 L3 缺口实为未映射前体所致）
+                  "g0": model_coherence(self.m),
                   "g1": self.g1_load(),
                   "g2": self.g2_balance(),
                   "g6": self.g6_atp_leak(context=context or {})}

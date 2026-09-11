@@ -50,17 +50,29 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 - **M2（2026-08-29 代码完成，doall 实测进行中）**：gapseq WSL2 桥（`python/gapseq_wsl.py`）。能力探测四件套（wsl/发行版/gapseq 版本/序列库注册 up-to-date——防假已装 UniProt 灾难）；新版 wsl.exe 输出 UTF-8（旧版 UTF-16LE，双解码兼容）；doall 哨兵文件轮询（30-60min，每 2min 进度 + 日志尾部旁观）；产物拷回 → 目标介质验证（AB 自然名）→ L1/L2 补洞闭环 → 模型卡。gem_build `engine` 参数（carveme|gapseq）+ 60min 超时。分发时采用**私有发行版**（wsl --import 自包含 bundle：R+gapseq+序列库 v1.5+哈希校验，版本钉死）。任务分步化（draft/build/transport/fill/adjust 每步落盘 → 断点续跑）待做。
 - **M3**：双引擎交叉验证，产出**分歧清单**（两引擎不一致反应/基因 = 低置信区，需文献/实验校验）而非平均；可选集成 gemsembler（先验证成熟度）；所有比对按**反应级等价类**而非基因级（引擎 GPR 粒度不同）。
 
-## 5. 五道验证关卡规格（HANDOFF-03 产品化）
+## 5. 验证关卡规格（HANDOFF-03 产品化 + G0）
 
 | 关卡 | 内容 | 首版 | 判定线 |
 |---|---|---|---|
+| **G0** | **模型数据质量前置诊断**（`python/coherence.py`）：id 体系识别 + biomass 未映射前体 + 方向异常 | ✅ 2026-09-11 | 有未映射前体 → WARN（提示下游结论不可靠）；产物侧出现 ATP → FAIL |
 | G1 | 加载统计 + 多复制子 locus_tag 唯一性 + GPR 覆盖 | ✅ | 可加载；无重复 ID；GPR 覆盖率报告 |
 | G2 | 内部反应元素平衡（EX/DM/SK/boundary 排除）| ✅ | C/N/P/S 不平衡=0（FAIL/WARN），H/charge 单独报告；公式覆盖率先报 |
 | G3 | 生长真实性（声明培养基）| ✅ | 有碳源 objective_value>0；无碳 <1e-6；全关=0；与参照值比值≥99% 判 PASS |
 | G4 | 底物表型对照 | 条件 | 有参照表才跑（内置 C58 39 底物作回归锚），不设阻塞阈值 |
 | G5 | 必需基因抽检（≤30 基因）| 条件 | 有参照集才跑；映射覆盖 <80% 时 SKIP(WARN) |
+| G6 | ATP 泄漏检测（全关交换后 ATP demand 应≈0）| ✅ | leak ≤0.01 判 PASS；ATP 解析走 id→name→formula 三级回退（跨 ID 体系）|
 
-关卡 fail-fast 排序 G1→G3→G2（便宜的先行）；gem_validate 保持**无状态**，同 run 可双跑（补洞前后 diff 写进模型卡）。
+**G0 的由来（2026-09-10 E2E 实测）**：MetaCyc 风格 id 的公开模型（iNX1344_v3）上，
+`gem_gapfind` 报 5 个 L3「内部通路缺口」，实为 biomass 前体未映射所致——agent 为逐个
+证伪手写 cobra 代码 18 次。现 `gem_validate` 在 G1 之前输出 `g0`，`gem_gapfind` 返回
+`coherence_warning` + `interpretation_guard`，把该结论前置给 agent。
+
+> ⚠️ **G0 判据的取舍（勿回退）**：曾试过「biomass 元素配平」与「前体可达性（demand 逐前体
+> FBA）」两条判据，均在教科书模型 e_coli_core 上误报（把它判 FAIL、把 atp_c/accoa_c 报成
+> 「结构缺失」）故被否决——标准 biomass 方程代表大分子聚合，本就不配平。保留判据的标准是
+> 「问题模型报出真问题 + 标准模型零误报」双向通过。
+
+关卡 fail-fast 排序 G0→G1→G3→G2（便宜的先行）；gem_validate 保持**无状态**，同 run 可双跑（补洞前后 diff 写进模型卡）。
 
 **判据口径**：FBA objective_value（mmol/gDW/h），不用 μ（h⁻¹）——模型输出单位即通量；C58 回归锚：gapseq AB=0.519981；补洞后 CarveMe 目标 ≥0.1 为软目标。
 
@@ -71,6 +83,8 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 - **L3 内部路径**：底物有交换+转运却无法达中心代谢 → 需文献反应（M1 报告清单，不自动补）
 
 已知规律（P1 实测）：多数"不能利用某碳源"缺口是 L1/L2 而非 L3。
+**2026-09-11 补充**：L3 清单须与 G0 一起解读——模型数据质量有问题时 L3 多为症状
+（`find_gaps` 返回值已内置 `coherence_warning` 与 `interpretation_guard`）。
 
 **防过补四闸门**：分级规则优先于 MILP（M1 不做 MILP）；新增反应数封顶（max_add=20）；逐条 provenance 打标（来源/原因/是否借自模板）；修复后强制重验 G3 + 生长值合理性上限告警（>1.0 时 WARN 过补嫌疑）。
 

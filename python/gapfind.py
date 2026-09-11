@@ -365,9 +365,26 @@ def find_gaps(model_path, medium=None, substrates=None):
                        "exchange": exid, "growth": round(g, 6),
                        "note": "需要文献反应或人工审核（M1 不自动补）"})
 
-    return {"L1": L1, "L2": L2, "L3": L3,
-            "medium_unresolved": unresolved_names,
-            "resolved_exchanges": sorted(resolved_med)}
+    # ---- 前置：模型数据质量（避免把「未映射前体」类数据问题解读成通路缺口）----
+    # 实测 iNX1344_v3：本函数报的 5 个 L3「内部通路缺口」实为 biomass 前体未映射所致，
+    # agent 为逐个证伪白烧十余次调用。这里把诊断前置到返回值里。
+    from coherence import model_coherence
+    coh = model_coherence(m)
+    out = {"L1": L1, "L2": L2, "L3": L3,
+           "medium_unresolved": unresolved_names,
+           "resolved_exchanges": sorted(resolved_med),
+           "model_coherence": {
+               "status": coh["status"],
+               "id_system": coh["id_system"]["system"],
+               "unmapped_biomass_metabolites": coh["biomass"].get("unmapped_metabolites", []),
+           }}
+    if coh["downstream_hint"]:
+        out["coherence_warning"] = coh["downstream_hint"]
+        out["interpretation_guard"] = (
+            "模型自洽性诊断发现数据质量问题（见 coherence_warning）——上方 L1/L2/L3 条目"
+            "可能是该问题的**症状**而非真实通路缺口；请先按 coherence_warning 处理，"
+            "不要把整张清单当作可交付的缺口结论")
+    return out
 
 
 def _mids_exist(m, ex_id):
