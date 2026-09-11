@@ -6,30 +6,14 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+// 解释器选择与 PYTHON_DIR 统一到 python.js：本文件此前另有一份硬编码 miniconda
+// 路径的 pythonExe 副本，会造成「gem_build 与其余 op 使用不同解释器」的隐性分裂
+// （2026-09-11 统一；候选顺序见 python.js：GEM_PYTHON → 宿主 dsh-bio-genie
+// 自举环境 → CONDA_PREFIX → PATH，且逐个探测 import cobra）。
+import { pythonExe, PYTHON_DIR } from './python.js'
 
 const ROOT = path.join(os.homedir(), '.dsh', 'dsh-bio-gem')
 const JOBS_DIR = path.join(ROOT, 'jobs')
-// 阶段D-E2E 修复：new URL(...).pathname 在 Windows 产生 "/C:/..." 前导斜杠，
-// path.join 后得 "\C:\...python"（不存在）→ spawn ENOENT → gem_build 恒 "result missing"。
-// 与 python.js 同款写法：fileURLToPath + dirname。
-const PYTHON_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'python')
-
-// 运行时探测：优先 miniconda（本机分析环境，cobra 已装），回退 env GEM_PYTHON / PATH
-export function pythonExe() {
-  const cands = [
-    process.env.GEM_PYTHON,
-    'C:/Users/shuai/miniconda3/python.exe',
-    'python',
-  ]
-  for (const c of cands) {
-    if (!c) continue
-    try {
-      if (c === 'python' || fs.existsSync(c)) return c
-    } catch { /* ignore */ }
-  }
-  return 'python'
-}
 
 const jobs = new Map() // jobId -> {cp, jobDir, ...}
 

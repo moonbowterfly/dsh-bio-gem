@@ -6,10 +6,8 @@ import { join } from 'node:path'
 import { dirname, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
-import { callGem, pythonExe, PYTHON_DIR } from './python.js'
+import { callGem, stampProvenance } from './python.js'
 import { startBuild, jobStatus } from './jobs.js'
-
-const PY = pythonExe()
 
 /** 校验输入存在（绝对路径或用户给定路径）。 */
 function requirePath(v, label) {
@@ -86,7 +84,7 @@ function buildTool() {
           if (!st.result || st.result.ok === false || st.result.result == null) {
             throw new Error(`gem_build failed: ${st.result?.error_hint ?? st.error ?? 'result missing'}${d}`)
           }
-          return st.result.result
+          return stampProvenance('gem_build', st.result.result)
         }
       }
       throw new Error('gem_build timeout (840s)')

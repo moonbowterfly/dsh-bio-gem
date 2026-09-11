@@ -19,7 +19,15 @@ Genome-scale metabolic model builder for dsh: genome in, validated SBML out.
 | **CarveMe** | 独立 venv `~/.dsh/dsh-bio-gem/venv-carveme`，含 `carve.exe` + **`diamond.exe`** | `gem_build`（carveme 引擎） |
 | WSL2 + gapseq | 可选，按本机拓扑（见第 4 节） | `gem_build`（gapseq 引擎） |
 
-> **与 dsh-bio-genie 的差别**：genie 首次运行会自动引导隔离 Python 环境（uv + venv + Biopython）；本插件**不自动引导**——`gem_build` 依赖 CarveMe 和 `diamond` 两个外部重依赖，请在部署时按下面第 2、3 步一次性准备。**只做分析（不建模型）也需要第 2 步**：除 `gem_build` 外的工具都要求一个装了 `cobra` 的 Python。
+> **Python 环境从哪来（v0.1.4 起）**：解释器探测顺序为
+> `GEM_PYTHON` → **宿主 `dsh-bio-genie` 的自举环境** → `CONDA_PREFIX` → `PATH` 中的 `python`，
+> 且会**逐个探测该解释器能否 `import cobra`**（不盲选）。
+>
+> 因此：**装了 dsh-bio-genie 就无需任何额外配置** —— genie 的自举环境自带 cobra
+> （属它的第一层依赖），gem 直接复用。只有**未装 genie** 时才需要按第 2 步自备解释器。
+>
+> `gem_build`（构建侧）另有重依赖（CarveMe + `diamond`，或 WSL2 + gapseq），见第 3、4 步，
+> 这部分不与 genie 共享环境。
 
 ### 1. 安装插件
 
@@ -45,7 +53,12 @@ npx -y @deepseek-ai/dsh plugin --profile web add ./dsh-bio-gem
 npx -y @deepseek-ai/dsh --profile web --dump-config | grep dsh-bio-gem
 ```
 
-### 2. 准备分析用 Python（cobra）
+### 2. 准备分析用 Python（cobra）—— 装了 genie 就跳过
+
+**已安装 `@dsh-bio/dsh-bio-genie` 时本节可跳过**：gem 自动复用 genie 的自举环境
+（`$DSH_HOME/dsh-bio-genie/python-env`），其中 cobra 属 genie 的第一层依赖，无需任何配置。
+
+未装 genie 时，自备一个装了 cobra 的解释器：
 
 ```sh
 # uv 建独立 venv 并安装（推荐）
@@ -53,7 +66,7 @@ uv venv --python 3.11 "$HOME/.dsh/dsh-bio-gem/venv"
 uv pip install --python "$HOME/.dsh/dsh-bio-gem/venv/Scripts/python.exe" cobra pyrodigal
 ```
 
-**必须把该解释器路径告诉插件**：插件按 `GEM_PYTHON` → 本机开发默认路径 → PATH 中的 `python` 顺序探测，落到没有 cobra 的解释器上时工具会直接报 `ModuleNotFoundError: cobra`。`GEM_PYTHON` 是 **dsh 进程的环境变量，必须在启动 dsh 之前设置**：
+用 `GEM_PYTHON` 指向它（**dsh 进程的环境变量，必须在启动 dsh 之前设置**）：
 
 ```bat
 :: cmd（写进启动脚本即可）
@@ -67,6 +80,10 @@ setx GEM_PYTHON "$env:USERPROFILE\.dsh\dsh-bio-gem\venv\Scripts\python.exe"
 # 或临时（仅当前窗口）
 $env:GEM_PYTHON = "$env:USERPROFILE\.dsh\dsh-bio-gem\venv\Scripts\python.exe"
 ```
+
+> 插件**不会盲选**解释器：它按上述顺序逐个探测 `import cobra`，选中第一个可用的并缓存。
+> 若候选全都不含 cobra，工具会显式报 `ModuleNotFoundError: cobra` 并附带候选探测结果，
+> 而不是静默落到一个不可用的解释器上。
 
 ### 3. 准备 CarveMe（构建引擎）
 
