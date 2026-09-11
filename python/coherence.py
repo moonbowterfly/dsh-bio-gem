@@ -38,8 +38,14 @@ ID_FRACTION = 0.5
 
 
 # ---------------------------------------------------------------- ID 体系
-def detect_id_system(model):
-    """按代谢物 id 命名习惯识别 ID 体系（决定下游关卡的名称映射口径）。"""
+def classify_id_system(model):
+    """按代谢物 id 命名习惯**归类** ID 体系（决定下游关卡的名称映射口径）。
+
+    与 `benchmark.detect_id_system` 的区别（刻意不同名，勿合并）：后者列举
+    基因/反应/代谢物的 ID **风格样本**（返回基因、反应、代谢物三组标签与计数）；
+    本函数按正则归类出**体系名**（bigg / metacyc / carveme / mixed / unknown）
+    并给出各体系命中比例，供路由与降级逻辑判断。
+    """
     mets = [x for x in model.metabolites if x.id]
     if not mets:
         return {"system": "unknown", "fractions": {}, "sampled": 0}
@@ -57,8 +63,14 @@ def detect_id_system(model):
 
 
 # ---------------------------------------------------------------- biomass
-def find_biomass(model):
-    """定位 biomass 反应：先按 id/name 命中，再退回 objective 变量。"""
+def locate_biomass(model):
+    """定位 biomass 反应：先按 id/name 命中，再退回 objective 变量。
+
+    与 `biomass_tools.find_biomass` 的区别（刻意不同名，勿合并）：后者按
+    `objective_coefficient != 0` 找 FBA 目标反应、多个时取组分最多者，服务于
+    biomass 精修；本函数按**名称**优先，服务于「这个模型的生长目标长什么样」
+    的数据质量诊断，返回 (reaction, 命中方式)。
+    """
     for r in model.reactions:
         if "biomass" in f"{r.id} {r.name or ''}".lower():
             return r, "id_or_name"
@@ -79,7 +91,7 @@ def check_biomass(model):
 
     不做元素配平判定——标准 biomass 方程本就不配平（见模块头注释）。
     """
-    bio, source = find_biomass(model)
+    bio, source = locate_biomass(model)
     if bio is None:
         return {"status": "WARN", "found_by": source,
                 "notes": ["未定位到 biomass 反应（id/name 与 objective 均未命中）→ 无法评估生长目标"]}
@@ -118,7 +130,7 @@ def check_biomass(model):
 # ---------------------------------------------------------------- 汇总
 def model_coherence(model):
     """模型数据质量诊断：ID 体系 + biomass 可用性。"""
-    idrep = detect_id_system(model)
+    idrep = classify_id_system(model)
     biorep = check_biomass(model)
 
     rank = {"PASS": 0, "WARN": 1, "FAIL": 2}
