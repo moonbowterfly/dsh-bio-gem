@@ -533,6 +533,31 @@ export function registerTools(ctx) {
     timeoutMs: 120_000,
   })))
 
+  // gem_precursor_scan：阻塞前体分析（「模型为什么不长」的结构级定位）
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_precursor_scan',
+    description:
+      '阻塞前体分析（precursor_scan）：定位**哪个 biomass 前体在卡住生长**。' +
+      '先测基线 biomass 通量——可生长则直接返回「无阻塞」（不做逐前体测试，天然零假阳性）；' +
+      '不生长则逐一移除每个前体的需求，看 biomass 是否恢复通量：恢复者即阻塞点。' +
+      'verdict 三态：growable（该条件下可生长）/ blocked（列出阻塞前体）/ ' +
+      'infeasible_or_constrained（逐前体均不恢复 → 病灶在 biomass 方程整体而非单个前体）。' +
+      '用在 gem_validate 判定不生长之后、gem_gapfind 之前：先确认阻塞在哪一层，再谈补洞。' +
+      '与 gem_gapfind 区分：后者分级报「缺交换 / 缺转运 / 内部路径」，本工具报「卡在哪个前体」；' +
+      '模型数据质量存疑时（gem_validate 的 g0 非 PASS）本工具结论更贴近根因。' +
+      '触发词：模型为什么不长、哪个前体卡住、阻塞前体、生长为零诊断、precursor。',
+    parameters: {
+      model: { type: 'string', required: true, description: 'SBML 模型文件绝对路径' },
+      medium: {
+        type: 'object', additionalProperties: true,
+        description: '可选培养基：{"medium_name":"AB"/"M9"}（内置成分）或 {EX_id: lower_bound}；缺省用模型自带边界',
+      },
+      max_precursors: { type: 'number', description: '逐前体测试上限（默认 200）' },
+    },
+    op: 'precursor_scan',
+    timeoutMs: 300_000,
+  })))
+
 
   return () => disposers.forEach((d) => d())
 }
@@ -540,4 +565,4 @@ export function registerTools(ctx) {
 export const gemToolNames = ['gem_report', 'gem_validate', 'gem_gapfind', 'gem_gapfill', 'gem_build',
   'gem_gapseq', 'gem_phenotype', 'gem_essentiality', 'gem_annotate', 'gem_media_resolve', 'gem_l3_fix',
   'gem_biomass', 'gem_fluxscan', 'gem_sensitivity', 'gem_ledger', 'gem_benchmark', 'gem_secretion',
-  'gem_double_knockout', 'gem_enrichment', 'gem_targets']
+  'gem_double_knockout', 'gem_enrichment', 'gem_targets', 'gem_precursor_scan']

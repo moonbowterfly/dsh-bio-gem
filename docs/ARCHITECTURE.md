@@ -17,7 +17,7 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 
 **裁决原则**：GLM 分析质量高但缺本机上下文（输出单位、输入形态、部署面=本机为主的现实），凡冲突处以本机实测与产品原则为准。
 
-## 3. 工具契约（20 工具 ↔ Python 层；19 op + build CLI）
+## 3. 工具契约（21 工具 ↔ Python 层；20 op + build CLI）
 
 | 工具 | Python 层 | 阶段 |
 |---|---|---|
@@ -41,8 +41,15 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 | gem_double_knockout | op double_knockout（双敲 v1：GPR 穷尽先验+全扫 max_pairs 预算；假设声明内置）| ✅ 阶段C-C2 DONE（Atu3364↔Atu4682 对应命中）|
 | gem_enrichment | op enrichment（必需基因通路富集：超几何+BH FDR；无注释 annotation_unavailable 兜底）| ✅ 阶段C-C3 DONE（C58 55 条 FDR 显著）|
 | gem_targets | op targets（靶点规范导出：11 字段锁定 schema；账本计数闭合；引物设计不做）| ✅ 阶段C-C4 DONE（258 行三类闭合）|
+| gem_precursor_scan | op precursor_scan（阻塞前体分析：基线通量→可生长即返「无阻塞」；不生长则逐前体移除测试定位阻塞点）| ✅ 2026-09-11（E2E 绕道归因产出）|
 
-> Python 分发器 `gem_ops.py` 共 **19 个 op**（model_info/validate/gapfind/gapfill/gapseq/phenotype_fix/essential_scan/annotate/media_resolve/l3_fix/biomass_inspect/biomass_apply/fluxscan/sensitivity/ledger/benchmark/secretion/double_knockout/enrichment/targets）；`gem_build` 不经分发器，由 `build.py` CLI 直接调用（长任务，jobs.js 拉起）。工具数（20）= op 数（19）+1（gem_biomass 一工具映射两 op）（biomass 一工具映射两 op，build 走 CLI 不占 op）。附模型卡统一写入 `python/model_card.py`（lineage/verified_phenotypes/essential_genes/robustness v3）与往返保真自检 `python/roundtrip_check.py`；预测账本 `python/ledger.py`（一个模型一个账本：`~/.dsh/dsh-bio-gem/ledger/<模型名>.jsonl`，按模型 basename 分，显式 ledger_path 可覆盖；无参查询=聚合全局视图；旧全局 predictions.jsonl 已迁移为 legacy）。**生长/通量数值口径（阶段A-M4）**：所有产出生长/通量数值的工具输出均带 `units: mmol/gDW/h` 与单点 FBA 声明；条件间通量对比一律走 gem_fluxscan 区间分离判定（overlap=伪影禁止引用）。
+> Python 分发器 `gem_ops.py` 共 **21 个 op**（annotate/benchmark/biomass_apply/biomass_inspect/double_knockout/enrichment/essential_scan/fluxscan/gapfill/gapfind/gapseq/l3_fix/ledger/media_resolve/model_info/phenotype_fix/precursor_scan/secretion/sensitivity/targets/validate）；`gem_build` 不经分发器，由 `build.py` CLI 直接调用（长任务，jobs.js 拉起）。
+>
+> **工具数（21）与 op 数（21）的关系**：不等且不是简单的 +1 —— `gem_biomass` 一个工具映射 `biomass_inspect` / `biomass_apply` 两个 op（工具 −1），而 `gem_build` 走 CLI 不占 op（工具 +1），两项相抵故数值相同。核验口径：`len(gem_ops.OPS)` 与 `grep -c 'ctx.tools.register(' src/tools.js`。
+
+> **precursor_scan 的判据取舍（勿回退）**：初版曾用「全开交换下逐前体 demand 能否净生产」的**绝对可达性**判据，在教科书模型 e_coli_core 上把 atp_c/accoa_c/nad_c/nadph_c 误报为「结构缺失」（辅因子有循环补给路径，稳态下不净生产 ≠ 网络不能供给），故否决。现行判据为**相对判断**：先测基线通量，可生长即直接返回「无阻塞」；不生长才逐前体做移除测试，由「移除后是否恢复通量」直接定义阻塞点。验证锚：toy 单点阻塞模型（精确命中）、e_coli_core（growable，零误报）、iNX1344_v3（infeasible_or_constrained，与 agent 手工探索结论一致）。
+
+> 其余工具层约定：附模型卡统一写入 `python/model_card.py`（lineage/verified_phenotypes/essential_genes/robustness v3）与往返保真自检 `python/roundtrip_check.py`；预测账本 `python/ledger.py`（一个模型一个账本：`~/.dsh/dsh-bio-gem/ledger/<模型名>.jsonl`，按模型 basename 分，显式 ledger_path 可覆盖；无参查询=聚合全局视图；旧全局 predictions.jsonl 已迁移为 legacy）。**生长/通量数值口径（阶段A-M4）**：所有产出生长/通量数值的工具输出均带 `units: mmol/gDW/h` 与单点 FBA 声明；条件间通量对比一律走 gem_fluxscan 区间分离判定（overlap=伪影禁止引用）。
 
 ## 4. 引擎路线（M1→M2→M3）
 

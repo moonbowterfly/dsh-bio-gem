@@ -486,6 +486,25 @@ def op_targets(args):
 OPS["targets"] = op_targets
 
 
+# ---------------------------------------------------------------------------
+# op: precursor_scan — 阻塞前体分析
+#   「模型为什么不长」的结构级定位：逐前体做移除测试，找出卡住生长的前体。
+#   来源：2026-09-11 E2E 绕道归因（agent 手写该逻辑 6+ 次，无工具可用）。
+#   判据刻意用「相对判断」而非绝对可达性 —— 对可生长模型天然零误报。
+# ---------------------------------------------------------------------------
+def op_precursor_scan(args):
+    from precursor_scan import scan_precursors
+    model = args.get("model")
+    if not model or not os.path.exists(model):
+        return {"ok": False, "error": f"model file not found: {model}"}
+    return {"ok": True, "result": scan_precursors(
+        model, medium=args.get("medium"),
+        max_precursors=args.get("max_precursors", 200))}
+
+
+OPS["precursor_scan"] = op_precursor_scan
+
+
 
 def main():
     line = sys.stdin.read()

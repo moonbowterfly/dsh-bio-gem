@@ -188,6 +188,7 @@ CarveMe + diamond are required only by `gem_build`; the other 19 tools need noth
 | `gem_double_knockout` | 双敲 v1 合成致死（GPR 穷尽先验+全扫预算；假设生成声明内置）| ✅ C58: Atu3364↔Atu4682 对应命中 |
 | `gem_enrichment` | 必需基因通路富集（超几何+BH FDR；通路源=SBML groups；无注释诚实兜底）| ✅ C58: 388 通路 55 显著 |
 | `gem_targets` | 靶点清单规范导出（账本三类 -> 锁定 schema CSV/JSON；计数闭合）| ✅ C58: 258 行三类闭合 |
+| `gem_precursor_scan` | 阻塞前体分析（模型为什么不长：基线通量→可生长即返无阻塞；不生长则逐前体移除测试定位阻塞点）| ✅ 2026-09-11 新增 |
 
 架构/决策见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/DECISIONS-2026-08-29.md](docs/DECISIONS-2026-08-29.md)。
 
