@@ -53,46 +53,30 @@ function hasCobra(exe) {
 }
 
 let cachedExe = null
-const probeLog = []
 
 /**
  * 选定解释器（进程内缓存）。
  *
  * 不做「路径存在即采用」的浅判断——落在一个没有 cobra 的解释器上时，
  * 工具只会抛 ModuleNotFoundError 而用户无从判断该装到哪里（README 曾专门
- * 警告此坑）。这里逐个探测 import cobra，让选择结果可解释。
+ * 警告此坑）。这里逐个探测 `import cobra`，让选择结果可解释。
+ *
+ * 注：选择依据的可视化由**宿主面板**承担（genie 设置面板的「代谢建模」分页会
+ * 展示选中解释器 + 来源 + cobra 版本 + 候选表）——本模块不再重复提供诊断 API，
+ * 也刻意不在插件加载期调用本函数（探测约 2.7s，会拖慢宿主启动）。
  */
 export function pythonExe() {
   if (cachedExe) return cachedExe
   for (const c of candidates()) {
     if (!c) continue
-    if (c !== 'python' && !existsSync(c)) {
-      probeLog.push({ exe: c, skipped: 'path-not-found' })
-      continue
-    }
+    if (c !== 'python' && !existsSync(c)) continue
     if (hasCobra(c)) {
       cachedExe = c
-      probeLog.push({ exe: c, selected: true })
       return c
     }
-    probeLog.push({ exe: c, skipped: 'no-cobra' })
   }
   cachedExe = 'python'
-  probeLog.push({ exe: 'python', selected: true, note: 'fallback: 所有候选均无 cobra' })
   return cachedExe
-}
-
-/** 环境诊断（供工具/日志说明「为什么选了这个解释器」）。 */
-export function pythonDiagnostics() {
-  const exe = pythonExe()
-  return {
-    selected: exe,
-    required_package: 'cobra',
-    candidates_probed: probeLog,
-    hint: exe === 'python'
-      ? '未找到含 cobra 的解释器：安装 dsh-bio-genie 插件（其自举环境已含 cobra），或用 GEM_PYTHON 指向一个装了 cobra 的解释器'
-      : undefined,
-  }
 }
 
 /** op 名 → 对外工具名（多数同名；特例是 model_info 与 biomass 的两个 op）。 */

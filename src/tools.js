@@ -562,7 +562,3 @@ export function registerTools(ctx) {
   return () => disposers.forEach((d) => d())
 }
 
-export const gemToolNames = ['gem_report', 'gem_validate', 'gem_gapfind', 'gem_gapfill', 'gem_build',
-  'gem_gapseq', 'gem_phenotype', 'gem_essentiality', 'gem_annotate', 'gem_media_resolve', 'gem_l3_fix',
-  'gem_biomass', 'gem_fluxscan', 'gem_sensitivity', 'gem_ledger', 'gem_benchmark', 'gem_secretion',
-  'gem_double_knockout', 'gem_enrichment', 'gem_targets', 'gem_precursor_scan']
