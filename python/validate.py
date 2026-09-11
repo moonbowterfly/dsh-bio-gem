@@ -106,10 +106,30 @@ class Validator:
         n_bad = sum(len(v) for v in bad_core.values())
         frac = 1.0 - n_bad / checked if checked else 0.0
         status = "PASS" if n_bad == 0 else ("WARN" if frac >= 0.85 else "FAIL")
+
+        # 2026-09-11 修复（agent 在真实 E2E 中发现并指出）：**公式覆盖率是 PASS 结论的
+        # 作用域上界** —— 覆盖率低时「无反应不平衡」只说明被检查的那部分没问题，不能
+        # 外推为整体 PASS。实测 iNX1344_v3：覆盖率 68.35% 却判 PASS，agent 据此指出
+        # 「g2 的 PASS 是假阳性，因为它只检查了有 formula 的 68.35% 代谢物」。
+        # 该结论会误导后续判断（例如「配平没问题」），故低覆盖时降级为 WARN。
+        G2_COVERAGE_GATE = 0.90
+        unchecked = len(internal) - checked
+        coverage_scope_note = None
+        if status == "PASS" and formula_coverage < G2_COVERAGE_GATE:
+            status = "WARN"
+            coverage_scope_note = (
+                f"元素平衡结论只覆盖 {formula_coverage * 100:.2f}% 代谢物、"
+                f"{checked}/{len(internal)} 条内部反应可判定（跳过 {unchecked} 条）"
+                f"→ 不足以判 PASS。补全代谢物 formula 后必须重跑本关；"
+                f"在此之前不要据本关结论断言「配平没问题」"
+            )
+
         rep = {
             "status": status,
             "internal_reactions": len(internal), "formula_checked": checked,
+            "formula_unchecked_reactions": unchecked,
             "metabolite_formula_coverage": round(formula_coverage, 4),
+            "coverage_gate": G2_COVERAGE_GATE,
             "core_unbalanced": {k: len(v) for k, v in bad_core.items()},
             "core_unbalanced_examples": {k: v[:5] for k, v in bad_core.items()},
             "h_o_report": {k: len(v) for k, v in bad_report.items()},
@@ -117,6 +137,8 @@ class Validator:
             # P0-2（2026-08-31 LBA9402 会话实测）：agent 会把 0.9985 心算换算成百分比而被防火墙拦——直接给原始百分数字段
             "core_balance_frac_pct": round(frac * 100, 2),
         }
+        if coverage_scope_note:
+            rep["coverage_scope_note"] = coverage_scope_note
         return rep
 
     # ------------------------------------------------------------------ G3
