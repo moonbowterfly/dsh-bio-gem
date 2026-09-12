@@ -28,6 +28,20 @@ async function test(name, fn) {
   }
 }
 
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((nextResolve, nextReject) => {
+    resolve = nextResolve
+    reject = nextReject
+  })
+  return { promise, resolve, reject }
+}
+
+function nextTurn() {
+  return new Promise((resolve) => setImmediate(resolve))
+}
+
 async function invokeRoute(handler, options = {}) {
   let status = null
   let headers = null
@@ -106,6 +120,12 @@ await test('status reports the three required checks and bounded asset summaries
       }),
       probeGapseq: async () => ({ available: true, detail: 'gapseq 2.1.0' }),
     })
+    const first = await service.status()
+    const firstGapseq = first.value.checks.find((check) => check.id === 'runtime.gapseq')
+    assert.equal(first.value.env.engines.gapseq.available, null)
+    assert.equal(firstGapseq.status, 'warn')
+
+    await nextTurn()
     const response = await service.status()
 
     assert.equal(response.ok, true)
@@ -131,7 +151,7 @@ await test('status reports the three required checks and bounded asset summaries
   }
 })
 
-await test('status caches expensive runtime probes for no more than sixty seconds', async () => {
+await test('status keeps Python cached for sixty seconds and successful gapseq cached longer', async () => {
   assert.equal(typeof integration?.createIntegrationService, 'function')
   let clock = 1_700_000_000_000
   let pythonProbes = 0
@@ -144,11 +164,12 @@ await test('status caches expensive runtime probes for no more than sixty second
     },
     probeGapseq: async () => {
       gapseqProbes += 1
-      return { available: false, detail: 'not configured' }
+      return { available: true, detail: 'available' }
     },
   })
 
   await service.status()
+  await nextTurn()
   await service.status()
   assert.equal(pythonProbes, 1)
   assert.equal(gapseqProbes, 1)
@@ -156,7 +177,7 @@ await test('status caches expensive runtime probes for no more than sixty second
   clock += 60_001
   await service.status()
   assert.equal(pythonProbes, 2)
-  assert.equal(gapseqProbes, 2)
+  assert.equal(gapseqProbes, 1)
 })
 
 await test('degraded checks expose only controlled remediation codes and owners', async () => {
@@ -207,26 +228,91 @@ await test('status uses the ordered gem Python candidates to expose cobra availa
   assert.deepEqual(cobraCalls, ['usable-python'])
 })
 
-await test('default gapseq probe uses a fixed read-only version command', async () => {
+await test('gapseq first status is probing and the fixed read-only command later parses its version', async () => {
   assert.equal(typeof integration?.createIntegrationService, 'function')
-  let invocation = null
+  const calls = []
+  const longProbe = deferred()
   const service = integration.createIntegrationService({
-    pythonCandidates: () => [],
+    probePython: async () => ({ selected: null, candidates: [] }),
     isWindows: true,
-    runGapseqProbe: async (command, args) => {
-      invocation = { command, args }
-      return { ok: true, stdout: 'gapseq version: 2.1.0' }
+    runGapseqProbe: (command, args) => {
+      calls.push({ command, args })
+      if (args[0] === '-l') return Promise.resolve({ ok: true, stdout: 'Ubuntu-22.04\n' })
+      return longProbe.promise
     },
   })
 
-  const response = await service.status()
-  const gapseqCheck = response.value.checks.find((check) => check.id === 'runtime.gapseq')
-  assert.equal(gapseqCheck.status, 'ok')
-  assert.equal(response.value.env.engines.gapseq.available, true)
-  assert.equal(invocation.command, 'wsl.exe')
-  assert.deepEqual(invocation.args.slice(0, 7), ['-d', 'Ubuntu-22.04', '-u', 'root', '--', 'bash', '-lc'])
-  assert.match(invocation.args[7], /gapseq -v/)
-  assert.doesNotMatch(invocation.args[7], /install|update|download/i)
+  const first = await service.status()
+  const firstCheck = first.value.checks.find((check) => check.id === 'runtime.gapseq')
+  assert.equal(first.value.env.engines.gapseq.available, null)
+  assert.equal(first.value.env.engines.gapseq.probing, true)
+  assert.equal(firstCheck.status, 'warn')
+
+  await nextTurn()
+  assert.deepEqual(calls[0], { command: 'wsl.exe', args: ['-l', '-q'] })
+  assert.equal(calls[1].command, 'wsl.exe')
+  assert.deepEqual(calls[1].args.slice(0, 7), ['-d', 'Ubuntu-22.04', '-u', 'root', '--', 'bash', '-lc'])
+  assert.match(calls[1].args[7], /gapseq -v/)
+  assert.doesNotMatch(calls[1].args[7], /install|update|download/i)
+
+  longProbe.resolve({ ok: true, stdout: 'gapseq version: 2.1.0' })
+  await nextTurn()
+  const settled = await service.status()
+  const settledCheck = settled.value.checks.find((check) => check.id === 'runtime.gapseq')
+  assert.equal(settled.value.env.engines.gapseq.available, true)
+  assert.equal(settledCheck.status, 'ok')
+  assert.match(settledCheck.detail, /2\.1\.0/)
+})
+
+await test('gapseq distro preflight does not start a long probe when no target distro exists', async () => {
+  assert.equal(typeof integration?.createIntegrationService, 'function')
+  const calls = []
+  const service = integration.createIntegrationService({
+    probePython: async () => ({ selected: null, candidates: [] }),
+    isWindows: true,
+    runGapseqProbe: async (command, args) => {
+      calls.push({ command, args })
+      return { ok: true, stdout: '' }
+    },
+  })
+
+  await service.status()
+  await nextTurn()
+  assert.deepEqual(calls, [{ command: 'wsl.exe', args: ['-l', '-q'] }])
+})
+
+await test('failed gapseq probes use a sixty-second cooldown before an automatic retry', async () => {
+  assert.equal(typeof integration?.createIntegrationService, 'function')
+  let clock = 1_700_000_000_000
+  let longProbeCalls = 0
+  const service = integration.createIntegrationService({
+    now: () => clock,
+    probePython: async () => ({ selected: null, candidates: [] }),
+    isWindows: true,
+    runGapseqProbe: async (_command, args) => {
+      if (args[0] === '-l') return { ok: true, stdout: 'Ubuntu-22.04\n' }
+      longProbeCalls += 1
+      return { ok: false, timeout: true, stdout: '' }
+    },
+  })
+
+  const first = await service.status()
+  assert.equal(first.value.env.engines.gapseq.available, null)
+  await nextTurn()
+  const failed = await service.status()
+  assert.equal(failed.value.env.engines.gapseq.available, false)
+  assert.equal(longProbeCalls, 1)
+
+  clock += 59_999
+  await service.status()
+  await nextTurn()
+  assert.equal(longProbeCalls, 1)
+
+  clock += 2
+  const stale = await service.status()
+  assert.equal(stale.value.env.engines.gapseq.available, false)
+  await nextTurn()
+  assert.equal(longProbeCalls, 2)
 })
 
 await test('integration routes allow loopback health and reject non-loopback callers', async () => {

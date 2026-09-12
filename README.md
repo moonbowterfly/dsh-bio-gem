@@ -143,7 +143,8 @@ GET /api/dsh-bio-gem/integration/v1/status
 ```
 
 - 两端点统一返回 `{ ok: true, value }` 或 `{ ok: false, code, message }`；health 只声明插件身份与协议能力，绝不启动 Python 或写盘。
-- status 返回模型/账本/导出的限量摘要、解释器与构建引擎的只读检查；`state` 仅为 `ready` 或 `degraded`，昂贵的 Python/cobra 与 WSL/gapseq 探测在进程内最多缓存 60 秒。
+- status 返回模型/账本/导出的限量摘要、解释器与构建引擎的只读检查；`state` 仅为 `ready` 或 `degraded`。Python/cobra 仍在进程内短缓存；WSL/gapseq 则采用非阻塞 stale-while-revalidate：首次返回 `available: null` / `probing` 与 `warn`，后台完成后才转为 `ok` 或 `missing`，不会把 status 响应拖到超时。
+- gapseq 成功结果缓存 5 分钟；失败或超时最多缓存 60 秒后自动重试。探测先用固定的 `wsl.exe -l -q` 预检目标发行版，再运行固定只读版本命令；插件在 webServer 出现约 8 秒后后台预热一次，加载期不探测、不阻塞启动。
 - 非 loopback、跨站或 Origin/Host 不一致的请求一律得到 `403`；端点不返回 token、任意命令、任意 URL 或完整日志。修复建议只有受控 `code` + `owner`。
 - **设置入口和五态显示属于 BioGenie 面板**，gem 不注册自己的设置页。BioGenie 结合本地安装探测与上述端点显示 `not-installed` / `legacy` / `installed-unavailable` / `incompatible` / `degraded` / `ready`；旧 gem 仅有文件系统只读兼容视图。
 - 本批不提供 job、安装、删除、配置或其他写 API；这些操作必须等后续的显式用户动作协议。

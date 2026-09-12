@@ -7,39 +7,65 @@ import assert from 'node:assert/strict'
 
 const plugin = await import('../src/index.js')
 
-assert.deepEqual(plugin.inject, {
-  required: ['tools', 'skills'],
-  optional: ['webServer'],
-})
+assert.deepEqual(plugin.inject, ['tools', 'skills'])
 
 let toolRegistrations = 0
 let skillRegistrations = 0
-let effect = null
 const routes = []
+let dynamicInjection = null
 const ctx = {
   tools: { register: () => { toolRegistrations += 1; return () => {} } },
   skills: { register: () => { skillRegistrations += 1; return () => {} } },
-  effect: (callback) => {
-    effect = callback
-    return callback()
+  inject: (deps, callback) => {
+    dynamicInjection = { deps, callback }
+    return () => {}
   },
 }
 
-plugin.apply(ctx)
-assert.equal(toolRegistrations, 21)
-assert.equal(skillRegistrations, 1)
-assert.equal(routes.length, 0)
-
-ctx.webServer = {
-  register: (route) => {
-    routes.push(route)
-    return () => routes.splice(routes.indexOf(route), 1)
-  },
+const originalSetTimeout = globalThis.setTimeout
+const originalClearTimeout = globalThis.clearTimeout
+const scheduled = []
+const cleared = []
+globalThis.setTimeout = (callback, delay) => {
+  const timer = { callback, delay }
+  scheduled.push(timer)
+  return timer
 }
-effect()
-assert.deepEqual(routes.map((route) => route.path), [
-  '/api/dsh-bio-gem/integration/health',
-  '/api/dsh-bio-gem/integration/v1/status',
-])
+globalThis.clearTimeout = (timer) => { cleared.push(timer) }
 
-console.log('✓ optional webServer leaves all 21 gem tools active')
+try {
+  plugin.apply(ctx)
+  assert.equal(toolRegistrations, 21)
+  assert.equal(skillRegistrations, 1)
+  assert.equal(routes.length, 0)
+  assert.deepEqual(dynamicInjection?.deps, ['webServer'])
+
+  const disposers = []
+  const webCtx = {
+    webServer: {
+      register: (route) => {
+        routes.push(route)
+        return () => routes.splice(routes.indexOf(route), 1)
+      },
+    },
+    effect: (callback) => {
+      const dispose = callback()
+      if (typeof dispose === 'function') disposers.push(dispose)
+      return dispose
+    },
+  }
+  dynamicInjection.callback(webCtx)
+  assert.deepEqual(routes.map((route) => route.path), [
+    '/api/dsh-bio-gem/integration/health',
+    '/api/dsh-bio-gem/integration/v1/status',
+  ])
+  assert.deepEqual(scheduled.map((timer) => timer.delay), [8_000])
+
+  disposers.at(-1)()
+  assert.deepEqual(cleared, [scheduled[0]])
+} finally {
+  globalThis.setTimeout = originalSetTimeout
+  globalThis.clearTimeout = originalClearTimeout
+}
+
+console.log('✓ dynamic webServer injection leaves all 21 gem tools active')

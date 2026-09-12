@@ -15,6 +15,8 @@ export const INTEGRATION_PREFIX = '/api/dsh-bio-gem/integration'
 export const PROTOCOL_MAJOR = 1
 export const PROTOCOL_MINORS = [0]
 export const RUNTIME_PROBE_CACHE_MS = 60_000
+/** WSL/gapseq 探测更重（wsl.exe 冷启动可达十秒级），缓存更久且**非阻塞**。 */
+export const GAPSEQ_PROBE_CACHE_MS = 300_000
 export const INTEGRATION_FEATURES = [
   'status',
   'model-store',
@@ -189,10 +191,14 @@ function runGapseqVersionCommand(command, args) {
       resolve(result)
     }
     try {
+      // stdin 必须保持 pipe（并立即 end）：实测 wsl.exe 在 stdin=ignore 下会极慢
+      // （同一条 `echo ok`：ignore 14.9s vs pipe 0.26s，约 50 倍），
+      // 这是之前 gapseq 探测频繁超时的真正根因。
       const child = spawn(command, args, {
         windowsHide: true,
-        stdio: ['ignore', 'pipe', 'ignore'],
+        stdio: ['pipe', 'pipe', 'ignore'],
       })
+      child.stdin?.end()
       child.stdout?.on('data', (chunk) => {
         if (stdout.length < 512) stdout += chunk.toString('utf8').slice(0, 512 - stdout.length)
       })
@@ -200,8 +206,8 @@ function runGapseqVersionCommand(command, args) {
       child.on('close', (code) => finish({ ok: code === 0, stdout }))
       timer = setTimeout(() => {
         try { child.kill() } catch { /* already exited */ }
-        finish({ ok: false })
-      }, 15_000)
+        finish({ ok: false, timeout: true })
+      }, 30_000)
     } catch {
       finish({ ok: false })
     }
@@ -212,6 +218,24 @@ async function probeGapseqEnvironment({ isWindows, distro, runner }) {
   if (!isWindows) {
     return { available: false, detail: 'gapseq 仅支持 Windows WSL 的只读探测。' }
   }
+  // 快速预检：先确认目标发行版存在（wsl.exe -l -q 亚秒级），避免发行版缺失时
+  // 白等一次 bash 长命令直到超时刹车（真实运行时实测：本机 bash 启动即 ~3s）。
+  try {
+    const listed = await runner('wsl.exe', ['-l', '-q'])
+    const names = String(listed?.stdout ?? '')
+      .replace(/\u0000/g, '')
+      .split(/\r?\n/)
+      .map((name) => name.trim())
+      .filter(Boolean)
+    if (listed?.ok && !names.includes(distro)) {
+      return {
+        available: false,
+        detail: names.length > 0
+          ? `WSL 发行版 ${distro} 不存在（现有：${names.join(', ')}）。`
+          : `WSL 未发现发行版（期望 ${distro}）。`,
+      }
+    }
+  } catch { /* 预检失败不阻断后续只读探测 */ }
   let result
   try {
     result = await runner('wsl.exe', [
@@ -223,7 +247,12 @@ async function probeGapseqEnvironment({ isWindows, distro, runner }) {
   }
   const output = String(result?.stdout ?? '').slice(0, 512)
   if (!result?.ok || !/\bgapseq\b/i.test(output)) {
-    return { available: false, detail: 'WSL/gapseq 只读探测未就绪。' }
+    return {
+      available: false,
+      detail: result?.timeout
+        ? 'gapseq 探测超时（WSL 冷启动可能超过 30s），后台将自动重试。'
+        : 'WSL/gapseq 只读探测未就绪。',
+    }
   }
   const version = output.match(/gapseq(?:\s+version)?\s*[:v]?\s*([0-9][0-9.]*)/i)?.[1]
   return {
@@ -349,22 +378,56 @@ export function createIntegrationService(options = {}) {
       distro: options.gapseqDistro ?? process.env.GEM_GAPSEQ_DISTRO ?? 'Ubuntu-22.04',
       runner: options.runGapseqProbe ?? runGapseqVersionCommand,
     }))
-  let cachedRuntime = null
-  let cachedRuntimeAt = 0
-  let pendingRuntime = null
+  let cachedPython = null
+  let cachedPythonAt = 0
+  let pendingPython = null
+  let cachedGapseq = null
+  let cachedGapseqAt = 0
+  let pendingGapseq = null
 
-  function readRuntime() {
+  /** Python 探测快（≈3s）且有 60s 缓存：保持同步等待，语义简单。 */
+  function readPython() {
     const current = now()
-    if (cachedRuntime && current - cachedRuntimeAt < RUNTIME_PROBE_CACHE_MS) return Promise.resolve(cachedRuntime)
-    if (pendingRuntime) return pendingRuntime
-    pendingRuntime = Promise.all([probePython(), probeGapseq()])
+    if (cachedPython && current - cachedPythonAt < RUNTIME_PROBE_CACHE_MS) return Promise.resolve(cachedPython)
+    if (pendingPython) return pendingPython
+    pendingPython = Promise.resolve()
+      .then(probePython)
       .then((value) => {
-        cachedRuntime = { python: value[0], gapseq: value[1] }
-        cachedRuntimeAt = now()
-        return cachedRuntime
+        cachedPython = value
+        cachedPythonAt = now()
+        return value
       })
-      .finally(() => { pendingRuntime = null })
-    return pendingRuntime
+      .finally(() => { pendingPython = null })
+    return pendingPython
+  }
+
+  /**
+   * gapseq 探测**非阻塞**（stale-while-revalidate）：缓存未过期直接返回；
+   * 过期时立即返回旧值并后台刷新；从未探测过则返回 `available: null` 占位
+   * （契约语义：null = 尚未探测，探测在后台进行，后续请求即得布尔结果）。
+   * 这样 status 永远不会被 WSL 冷启动拖到消费端超时。
+   */
+  function readGapseq() {
+    const current = now()
+    // 失败结果（含超时）只缓存 60s，让后台尽快重试（WSL 冷启动是暂时性状态）。
+    const ttl = cachedGapseq?.available === false ? 60_000 : GAPSEQ_PROBE_CACHE_MS
+    if (cachedGapseq && current - cachedGapseqAt < ttl) return cachedGapseq
+    if (!pendingGapseq) {
+      pendingGapseq = Promise.resolve()
+        .then(probeGapseq)
+        .then((value) => {
+          cachedGapseq = value
+          cachedGapseqAt = now()
+          return value
+        })
+        .catch(() => cachedGapseq)
+        .finally(() => { pendingGapseq = null })
+    }
+    return cachedGapseq ?? {
+      available: null,
+      probing: true,
+      detail: 'gapseq 只读探测进行中（WSL 冷启动可能需数秒），稍后刷新可见结果。',
+    }
   }
 
   return {
@@ -382,7 +445,8 @@ export function createIntegrationService(options = {}) {
     },
 
     async status() {
-      const { python, gapseq } = await readRuntime()
+      const python = await readPython()
+      const gapseq = readGapseq()
       const carveme = carvemeStatus(dataRoot)
       const checks = [
         statusCheck(
@@ -399,7 +463,7 @@ export function createIntegrationService(options = {}) {
         ),
         statusCheck(
           'runtime.gapseq',
-          gapseq.available ? 'ok' : 'missing',
+          gapseq.available === true ? 'ok' : gapseq.available === null ? 'warn' : 'missing',
           gapseq.detail ?? (gapseq.available ? 'gapseq 只读探测通过。' : 'gapseq 只读探测未就绪。'),
         ),
       ]
