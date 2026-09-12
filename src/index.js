@@ -2,12 +2,20 @@
 // 注入 tools（5 语义化工具：gem_report/validate/gapfind/gapfill/build）+ skills（gem-expert）。
 import { registerTools } from './tools.js'
 import { registerSkills } from './skills.js'
+import { registerIntegrationRoutes } from './integration.js'
 
 /** Cordis 插件名（cordis.patch.yml row id 同名）。 */
 export const name = 'dsh-bio-gem'
 
-/** 需要的服务。M1：tools + skills（无浏览器半/无 server 路由）。 */
-export const inject = ['tools', 'skills']
+/**
+ * `webServer` is optional: GEM tools and skill registration must stay active
+ * in non-web dsh deployments, while web deployments gain the read-only
+ * hosted-domain integration routes.
+ */
+export const inject = {
+  required: ['tools', 'skills'],
+  optional: ['webServer'],
+}
 
 /**
  * 装配插件。
@@ -16,4 +24,11 @@ export const inject = ['tools', 'skills']
 export function apply(ctx) {
   registerTools(ctx)
   registerSkills(ctx)
+
+  // Cordis re-evaluates this effect when optional services appear. Access the
+  // property inside the effect so a missing webServer never blocks tools.
+  ctx.effect(() => {
+    if (!ctx.webServer) return undefined
+    return registerIntegrationRoutes(ctx)
+  }, 'dsh-bio-gem: integration API routes')
 }

@@ -112,7 +112,15 @@ job 化 + 进度事件（粒度 ≤5s）+ 分步 checkpoint（每步落盘，可
 ## 9. 与 bio-genie 衔接
 
 - 产出 SBML 落 `~/.dsh/dsh-bio-gem/models/<name>.xml`；模型卡同目录；
-- bio-genie 模型面板/消费工具读取同一模型库（路径注册另议：复用 dsh-bio-genie 的 /metabolic-models 上传入口或直接注册目录）。
+- 协议版 gem 的运行时状态由 gem 自己的 integration API 作为唯一事实源；BioGenie 不再并行直读 models/ledger/exports。仅 `legacy`（gem < 0.1.11）兼容视图允许文件系统摘要兜底，且必须标明只读。
+
+### 9.1 托管领域扩展 integration v1（v0.1.11+）
+
+- 固定 GET 端点：`/api/dsh-bio-gem/integration/health`（身份/协议协商，零 Python spawn、零写盘）和 `/api/dsh-bio-gem/integration/v1/status`（状态快照）。两者均用 `{ok,value}` / `{ok:false,code,message}` 信封。
+- status 的唯一状态是 `ready` 或 `degraded`；三个稳定检查 ID 为 `python.cobra`、`runtime.carveme`、`runtime.gapseq`。模型、账本、导出仅返回摘要与最多 50 条条目；Python/cobra 与 WSL/gapseq 的昂贵只读探测缓存不超过 60 秒。
+- 所有路由使用与 BioGenie 相同的 socket/Host/sec-fetch-site/Origin 四层 loopback 守卫。回传不包含 token、任意命令、任意 URL 或完整日志；remediation 仅为受控 `code` + `owner`，其中共享 WSL/gapseq 的 owner 是 genie、CarveMe 私有运行时的 owner 是 gem。
+- `webServer` 是 Cordis optional inject：无 webServer 时仍照常注册 21 个 `gem_*` 工具和 gem-expert skill；服务出现后才注册两条路由。gem 不注册浏览器设置入口，一级入口和五态 UI 由 BioGenie 唯一拥有。
+- 本批严格只读：不实现 job API、安装/删除、配置 schema、自动修复或跨插件命令执行。
 
 ## 10. 验收（M1 最小可用判定线）
 

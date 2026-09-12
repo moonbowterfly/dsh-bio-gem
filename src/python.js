@@ -20,24 +20,40 @@ const PYTHON_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'python')
  *   3. `CONDA_PREFIX`          — 当前激活的 conda 环境（通用信号，非硬编码路径）
  *   4. `python`                — PATH 兜底
  */
-function candidates() {
+/**
+ * Candidate interpreters in the same priority order used by pythonExe().
+ *
+ * The integration status endpoint consumes this exported, side-effect-free
+ * description instead of keeping a second, drift-prone candidate list.
+ */
+export function pythonCandidates() {
   const list = []
-  if (process.env.GEM_PYTHON) list.push(process.env.GEM_PYTHON)
+  if (process.env.GEM_PYTHON) list.push({ path: process.env.GEM_PYTHON, source: 'GEM_PYTHON' })
 
   const dshHome = process.env.DSH_HOME ?? join(os.homedir(), '.dsh')
   const hosted = join(dshHome, 'dsh-bio-genie', 'python-env')
-  list.push(process.platform === 'win32'
-    ? join(hosted, 'Scripts', 'python.exe')
-    : join(hosted, 'bin', 'python'))
+  list.push({
+    path: process.platform === 'win32'
+      ? join(hosted, 'Scripts', 'python.exe')
+      : join(hosted, 'bin', 'python'),
+    source: 'genie-hosted',
+  })
 
   if (process.env.CONDA_PREFIX) {
-    list.push(process.platform === 'win32'
-      ? join(process.env.CONDA_PREFIX, 'python.exe')
-      : join(process.env.CONDA_PREFIX, 'bin', 'python'))
+    list.push({
+      path: process.platform === 'win32'
+        ? join(process.env.CONDA_PREFIX, 'python.exe')
+        : join(process.env.CONDA_PREFIX, 'bin', 'python'),
+      source: 'CONDA_PREFIX',
+    })
   }
 
-  list.push('python')
+  list.push({ path: 'python', source: 'PATH' })
   return list
+}
+
+function candidates() {
+  return pythonCandidates().map((candidate) => candidate.path)
 }
 
 /** cobra 是本插件除 gem_build 外全部 op 的硬依赖：探测解释器能否 import cobra。 */

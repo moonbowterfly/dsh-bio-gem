@@ -118,6 +118,8 @@ unzip -o diamond.zip diamond.exe -d "$HOME/.dsh/dsh-bio-gem/venv-carveme/Scripts
 # 断言锚定本机 C58 夹具路径（见 test/smoke.js 顶部常量），换机器先改路径
 GEM_PYTHON=<你的-cobra-python> node test/smoke.js --skip-build   # 跳过 ~70s 的 build 单测
 GEM_PYTHON=<你的-cobra-python> node test/smoke.js                # 含 build 单测
+# 托管领域扩展的只读 integration 协议（无需 dsh 实例）
+node test/integration.js
 ```
 
 ### 6. 与 dsh-bio-genie 协同
@@ -130,6 +132,21 @@ GEM_PYTHON=<你的-cobra-python> node test/smoke.js                # 含 build �
 | dsh-bio-genie | **用模型**：FBA / 基因必需性 / 生产包络线 / 模型管理面板，外加全量生信分析工具 |
 
 装好 genie 后，其 agent 常驻 persona 已内置 GEM 能力域路由，「建模型 / 建模 / 补洞」类需求会自动转给 `gem_*` 工具。
+
+#### 托管领域扩展集成协议（v0.1.11+）
+
+当 gem 与 BioGenie 运行在同一 dsh Web 实例时，gem 提供两个**固定、只读、loopback-only** 的端点：
+
+```text
+GET /api/dsh-bio-gem/integration/health
+GET /api/dsh-bio-gem/integration/v1/status
+```
+
+- 两端点统一返回 `{ ok: true, value }` 或 `{ ok: false, code, message }`；health 只声明插件身份与协议能力，绝不启动 Python 或写盘。
+- status 返回模型/账本/导出的限量摘要、解释器与构建引擎的只读检查；`state` 仅为 `ready` 或 `degraded`，昂贵的 Python/cobra 与 WSL/gapseq 探测在进程内最多缓存 60 秒。
+- 非 loopback、跨站或 Origin/Host 不一致的请求一律得到 `403`；端点不返回 token、任意命令、任意 URL 或完整日志。修复建议只有受控 `code` + `owner`。
+- **设置入口和五态显示属于 BioGenie 面板**，gem 不注册自己的设置页。BioGenie 结合本地安装探测与上述端点显示 `not-installed` / `legacy` / `installed-unavailable` / `incompatible` / `degraded` / `ready`；旧 gem 仅有文件系统只读兼容视图。
+- 本批不提供 job、安装、删除、配置或其他写 API；这些操作必须等后续的显式用户动作协议。
 
 ### 7. 卸载
 
