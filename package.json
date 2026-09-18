@@ -39,7 +39,9 @@
     }
   },
   "scripts": {
-    "smoke": "node test/smoke.js"
+    "smoke": "node test/smoke.js",
+    "test": "node test/smoke.js --skip-build && node test/integration.js && node --import ./test/register-dsh-tools.mjs test/optional-injection.js",
+    "test:full": "node test/smoke.js && node test/integration.js && node --import ./test/register-dsh-tools.mjs test/optional-injection.js"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-tools": "*"
