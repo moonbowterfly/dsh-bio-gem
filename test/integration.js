@@ -78,7 +78,7 @@ await test('health exposes the frozen protocol identity without a runtime probe'
     ok: true,
     value: {
       pluginId: 'dsh-bio-gem',
-      pluginVersion: '0.1.11',
+      pluginVersion: '0.1.12',
       protocolMajor: 1,
       protocolMinors: [0],
       features: [

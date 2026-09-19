@@ -45,6 +45,7 @@ npx -y @deepseek-ai/dsh plugin --profile web add ./dsh-bio-gem
 - 本机若已全局安装 dsh CLI，把 `npx -y @deepseek-ai/dsh` 换成 `dsh` 即可。
 - `--profile <name>` 是**必填选项**（不传报 `required option '--profile <name>' not specified`）；Web 端固定用 `web`。
 - 安装完**重启 dsh web 服务**（关掉原窗口，重新双击启动入口）。
+- **引擎兼容（2026-09-19）**：经 dsh **0.1.5-rc.2** 走廊逐卡走查（v0.1.3-alpha.2 → 0.1.5-rc.2 共 55 张变更卡核对：零适配命中）与实机验证（工具注册 / 代谢建模面板 / 账本与模型数据）。
 - 版本刚发布时可能短时间拉不到：registry 首次分发有几分钟延迟，`pnpm` 还可能缓存住 404。遇到 `ERR_PNPM_FETCH_404 ... is not in the npm registry` 时等几分钟重试，或在命令末尾追加 `--registry https://registry.npmjs.org/` 绕过缓存。
 
 验证插件层已生效（不用启动服务）：
