@@ -63,7 +63,7 @@ def double_knockout(model_path, medium=None, max_pairs=5000, export_csv=None,
     log(f"[dk] {model_path} medium={medium} wt={wt} max_pairs={max_pairs}")
 
     out = {"model": model_path, "medium": medium, "medium_preset": preset,
-           "wt_growth": wt, "units": "mmol/gDW/h", "assumption_note": ASSUMPTION_NOTE,
+           "wt_growth": wt, "units": "1/h", "assumption_note": ASSUMPTION_NOTE,
            "max_pairs": max_pairs, "eps": EPS,
            "degenerate": wt <= EPS}
     if out["degenerate"]:

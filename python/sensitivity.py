@@ -7,7 +7,7 @@
 #   产物（目标汇连接组分），GAM 网格只动 stub（等比缩放 X/GAM_ORIG）。
 # 锚点: 基准组合与 essential_scan 完全同参数 -> 必须精确复现 155；且 155 全部在
 #   always_essential ∪ conditionally_essential（基准在网格内故断言必成立）。
-# 生长/通量数值口径: 单点 FBA objective_value（mmol/gDW/h）；区间制对比请用 gem_fluxscan。
+# 生长数值口径: 单点 FBA objective_value = 比生长速率（1/h，biomass 归一化口径）；区间制对比请用 gem_fluxscan。
 import os
 import sys
 import csv
@@ -391,7 +391,7 @@ def sensitivity(model_path, medium=None, biomass_scales=None, gam_grid=None,
         "component_sensitivity": {"top_sensitive": top_sensitive, "rows": comp_rows},
         "component_essentiality_drift": drift,
         "card_robustness_written": card_written,
-        "units": "mmol/gDW/h",
+        "units": "1/h",
         "timing_seconds": round(time.time() - t_start, 1),
     }
     try:

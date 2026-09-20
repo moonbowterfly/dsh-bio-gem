@@ -19,7 +19,7 @@ from sensitivity import find_biomass_gam
 from validate import Validator
 
 EPS = 1e-6
-UNITS_NOTE = "growth=mmol/gDW/h；必需判定=敲除生长<1e-6"
+UNITS_NOTE = "growth=1/h（比生长速率；biomass 归一化口径，数值 = μ）；必需判定=敲除生长<1e-6"
 DEG_MSG = "wt<=EPS：必需性判定恒真（v=0 使全部候选判'必需'），essential 集无生物学意义"
 
 
@@ -317,7 +317,7 @@ def write_md(path, out):
     L.append("\n## 3. 生长（声明介质，单点 FBA 口径）\n")
     for tag, name in (("a", "A"), ("b", "B")):
         g = out["growth"][tag]
-        L.append(f"- **{name}**: growth=**{g['growth']}** mmol/gDW/h, resolved={g['resolved_exchanges']}, "
+        L.append(f"- **{name}**: growth=**{g['growth']}** 1/h, resolved={g['resolved_exchanges']}, "
                  f"boundary_style={g['boundary_style']}, unresolved={g['unresolved']}")
         if g.get("resolved_display"):
             L.append(f"  - resolved_display: {g['resolved_display']}")
@@ -492,7 +492,7 @@ def benchmark(model_a, model_b, medium=None, phenotype_table=None, reference_ess
     for tag, path in (("a", model_a), ("b", model_b)):
         wt, resolved, unresolved, preset, bstyle = growth_on(path, medium)
         entry = {"growth": wt, "resolved_exchanges": len(resolved), "unresolved": unresolved,
-                 "medium_preset": preset, "boundary_style": bstyle, "units": "mmol/gDW/h",
+                 "medium_preset": preset, "boundary_style": bstyle, "units": "1/h",
                  "point_value_note": "单点 FBA 值，非解空间硬结论；条件间对比用 gem_fluxscan（区间制）"}
         if bstyle:
             entry["resolved_display"] = [ex_display_name(silent_read_sbml(path), rid)

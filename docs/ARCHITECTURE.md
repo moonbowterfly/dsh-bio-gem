@@ -43,9 +43,9 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 | gem_targets | op targets（靶点规范导出：11 字段锁定 schema；账本计数闭合；引物设计不做）| ✅ 阶段C-C4 DONE（258 行三类闭合）|
 | gem_precursor_scan | op precursor_scan（阻塞前体分析：基线通量→可生长即返「无阻塞」；不生长则逐前体移除测试定位阻塞点）| ✅ 2026-09-11（E2E 绕道归因产出）|
 
-> Python 分发器 `gem_ops.py` 共 **21 个 op**（annotate/benchmark/biomass_apply/biomass_inspect/double_knockout/enrichment/essential_scan/fluxscan/gapfill/gapfind/gapseq/l3_fix/ledger/media_resolve/model_info/phenotype_fix/precursor_scan/secretion/sensitivity/targets/validate）；`gem_build` 不经分发器，由 `build.py` CLI 直接调用（长任务，jobs.js 拉起）。
+> Python 分发器 `gem_ops.py` 共 **23 个 op**（annotate/benchmark/biomass_apply/biomass_inspect/double_knockout/enrichment/essential_scan/fluxscan/gapfill/gapfind/gapseq/l3_fix/ledger/media_resolve/model_info/phenotype_fix/precursor_scan/quality/sample/secretion/sensitivity/targets/validate）；`gem_build` 不经分发器，由 `build.py` CLI 直接调用（长任务，jobs.js 拉起）。
 >
-> **工具数（21）与 op 数（21）的关系**：不等且不是简单的 +1 —— `gem_biomass` 一个工具映射 `biomass_inspect` / `biomass_apply` 两个 op（工具 −1），而 `gem_build` 走 CLI 不占 op（工具 +1），两项相抵故数值相同。核验口径：`len(gem_ops.OPS)` 与 `grep -c 'ctx.tools.register(' src/tools.js`。
+> **工具数（23）与 op 数（23）的关系**：不等且不是简单的 +1 —— `gem_biomass` 一个工具映射 `biomass_inspect` / `biomass_apply` 两个 op（工具 −1），而 `gem_build` 走 CLI 不占 op（工具 +1），两项相抵故数值相同。核验口径：`len(gem_ops.OPS)` 与 `grep -c 'ctx.tools.register(' src/tools.js`。
 
 > **precursor_scan 的判据取舍（勿回退）**：初版曾用「全开交换下逐前体 demand 能否净生产」的**绝对可达性**判据，在教科书模型 e_coli_core 上把 atp_c/accoa_c/nad_c/nadph_c 误报为「结构缺失」（辅因子有循环补给路径，稳态下不净生产 ≠ 网络不能供给），故否决。现行判据为**相对判断**：先测基线通量，可生长即直接返回「无阻塞」；不生长才逐前体做移除测试，由「移除后是否恢复通量」直接定义阻塞点。验证锚：toy 单点阻塞模型（精确命中）、e_coli_core（growable，零误报）、iNX1344_v3（infeasible_or_constrained，与 agent 手工探索结论一致）。
 
@@ -119,7 +119,7 @@ job 化 + 进度事件（粒度 ≤5s）+ 分步 checkpoint（每步落盘，可
 - 固定 GET 端点：`/api/dsh-bio-gem/integration/health`（身份/协议协商，零 Python spawn、零写盘）和 `/api/dsh-bio-gem/integration/v1/status`（状态快照）。两者均用 `{ok,value}` / `{ok:false,code,message}` 信封。
 - status 的唯一状态是 `ready` 或 `degraded`；三个稳定检查 ID 为 `python.cobra`、`runtime.carveme`、`runtime.gapseq`。模型、账本、导出仅返回摘要与最多 50 条条目。Python/cobra 维持 60 秒短缓存；WSL/gapseq 是非阻塞 stale-while-revalidate：首次以 `available: null`、`probing: true` 和 check=`warn` 表示后台探测中，缓存过期时先返回旧值并刷新，成功缓存 5 分钟、失败或超时最多缓存 60 秒后自动重试。
 - 所有路由使用与 BioGenie 相同的 socket/Host/sec-fetch-site/Origin 四层 loopback 守卫。回传不包含 token、任意命令、任意 URL 或完整日志；remediation 仅为受控 `code` + `owner`，其中共享 WSL/gapseq 的 owner 是 genie、CarveMe 私有运行时的 owner 是 gem。
-- 静态 Cordis `inject` 只声明 `tools`、`skills`；`webServer` 通过 `ctx.inject(['webServer'], cb)` 动态等待。无 webServer 时仍照常注册 21 个 `gem_*` 工具和 gem-expert skill；服务出现后才注册两条路由，并在约 8 秒后后台预热一次 status 缓存。gapseq 先做 `wsl.exe -l -q` 发行版预检，再用固定只读版本命令；子进程 stdin 使用 pipe 并立即关闭，避免 WSL 因 `stdin=ignore` 慢启动。gem 不注册浏览器设置入口，一级入口和五态 UI 由 BioGenie 唯一拥有。
+- 静态 Cordis `inject` 只声明 `tools`、`skills`；`webServer` 通过 `ctx.inject(['webServer'], cb)` 动态等待。无 webServer 时仍照常注册 23 个 `gem_*` 工具和 gem-expert skill；服务出现后才注册两条路由，并在约 8 秒后后台预热一次 status 缓存。gapseq 先做 `wsl.exe -l -q` 发行版预检，再用固定只读版本命令；子进程 stdin 使用 pipe 并立即关闭，避免 WSL 因 `stdin=ignore` 慢启动。gem 不注册浏览器设置入口，一级入口和五态 UI 由 BioGenie 唯一拥有。
 - 本批严格只读：不实现 job API、安装/删除、配置 schema、自动修复或跨插件命令执行。
 
 ## 10. 验收（M1 最小可用判定线）

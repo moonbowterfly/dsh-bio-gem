@@ -12,6 +12,7 @@ language: mixed
 |---|---|
 | 已有 SBML 模型文件，想知道概要（基因/反应/复制子）| `gem_report`（model 参数=绝对路径）|
 | 验证模型质量（五道关卡：加载/元素平衡/生长真实性/表型/必需性抽检）| `gem_validate`（model + medium）|
+| 模型质量审计（对标 MEMOTE 维度：blocked 反应/环路/元素平衡/孤儿与死端/覆盖率/连通性 + 启发式质量分）| `gem_quality`（model + 可选 medium；分项与 failed_checks 为准，quality_index 仅速览）|
 | 模型在目标培养基不长，想知道为什么 | `gem_gapfind`（model + medium + substrates）**；先跑 `gem_precursor_scan` 确认阻塞层次**——它报「卡在哪个前体」（可生长即返无阻塞），比缺口清单更贴近根因 |
 | gapfind 判 L3（内部路径）后自动补洞（白名单/MILP）| `gem_l3_fix`（model + medium + substrates；allow_math=true 才放数学连接；补后自动跑 G6 防能量循环）|
 | 看/改 biomass（FBA 目标函数）| `gem_biomass`（action=inspect 只读组分/对照参考；apply 显式 profile + 三联对照，原文件不动可回滚）|
@@ -20,6 +21,7 @@ language: mixed
 | 只有裸基因组 .fna，先要蛋白序列 | `gem_annotate`（fna → faa；官方优先 + pyrodigal 兜底）|
 | 需要模型的全量必需基因清单 | `gem_essentiality`（FVA 预筛 + 手工敲除；medium 推荐 AB）|
 | 跨条件通量对比（哪个反应真变了）| `gem_fluxscan`（区间制：FVA 区间+pFBA 点值，区间分离=硬结论，overlap=伪影禁止引用）|
+| 通量分布采样（反应合理取值范围、稳态分布）| `gem_sample`（model + n + growth_floor_fraction；默认全空间采样，看近最优生长态传 0.9）|
 | 量化模型不确定性（biomass/GAM 扰动下预测稳不稳）| `gem_sensitivity`（22 组合网格+稳定性三分类+单组分漂移；action=probe 秒级探测）|
 | 查询/更新模型预测（必需性/表型预测追踪与实验兑现）| `gem_ledger`（list/query/update；预测默认 unverified，兑现后回填状态）|
 | 两个模型规范对比（论文级基准表）| `gem_benchmark`（model_a+model_b：六关并列/生长/biomass 断供探针/必需性对比[退化侧只报结构]/表型/账本回填；export_md 落盘）|

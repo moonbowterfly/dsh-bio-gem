@@ -14,7 +14,7 @@ Genome-scale metabolic model builder for dsh: genome in, validated SBML out.
 |------|------|------|
 | dsh 引擎 | 0.1.x（`npx -y @deepseek-ai/dsh --version` 可查） | 宿主 |
 | Node.js | ≥ 22.19 或 ≥ 24（见 `package.json` 的 `engines`） | 宿主 |
-| Python | 3.10+，且装 **`cobra`** | 分析/验证/补洞/账本/基准/导出 —— 除 `gem_build` 外的 20 个工具 |
+| Python | 3.10+，且装 **`cobra`** | 分析/验证/补洞/账本/基准/导出 —— 除 `gem_build` 外的 22 个工具 |
 | `pyrodigal` | 装在同一个 Python 环境（可选但建议） | 裸基因组自动注释兜底（`gem_annotate` / fna 输入） |
 | **CarveMe** | 独立 venv `~/.dsh/dsh-bio-gem/venv-carveme`，含 `carve.exe` + **`diamond.exe`** | `gem_build`（carveme 引擎） |
 | WSL2 + gapseq | 可选，按本机拓扑（见第 4 节） | `gem_build`（gapseq 引擎） |
@@ -110,7 +110,7 @@ unzip -o diamond.zip diamond.exe -d "$HOME/.dsh/dsh-bio-gem/venv-carveme/Scripts
 
 ### 4.（可选）gapseq 引擎（WSL2）
 
-`gem_build` 的 `engine=gapseq` 走 WSL2 桥（`gem_gapseq` 原子四步：setup / launch / status / fetch），质量档耗时 30-60 分钟/模型，非必需——默认的 `engine=carveme` 已能出可验证模型。桥按本机拓扑实现（WSL2 + `/opt/miniforge3` conda 环境 `gapseq` + 本地序列库），换机器需改 `python/gapseq_wsl.py` 顶部常量，故目前**视为实验性可选能力**。没有 WSL2 不影响其余 20 个工具与 carveme 构建。
+`gem_build` 的 `engine=gapseq` 走 WSL2 桥（`gem_gapseq` 原子四步：setup / launch / status / fetch），质量档耗时 30-60 分钟/模型，非必需——默认的 `engine=carveme` 已能出可验证模型。桥按本机拓扑实现（WSL2 + `/opt/miniforge3` conda 环境 `gapseq` + 本地序列库），换机器需改 `python/gapseq_wsl.py` 顶部常量，故目前**视为实验性可选能力**。没有 WSL2 不影响其余 22 个工具与 carveme 构建。
 
 ### 5. 自检（仓库源码目录内）
 
@@ -208,6 +208,8 @@ CarveMe + diamond are required only by `gem_build`; the other 20 tools need noth
 | `gem_enrichment` | 必需基因通路富集（超几何+BH FDR；通路源=SBML groups；无注释诚实兜底）| ✅ C58: 388 通路 55 显著 |
 | `gem_targets` | 靶点清单规范导出（账本三类 -> 锁定 schema CSV/JSON；计数闭合）| ✅ C58: 258 行三类闭合 |
 | `gem_precursor_scan` | 阻塞前体分析（模型为什么不长：基线通量→可生长即返无阻塞；不生长则逐前体移除测试定位阻塞点）| ✅ 2026-09-11 新增 |
+| `gem_quality` | 模型质量报告（gem-qi-v1：blocked/环路(fastcc 方向锥)/元素平衡/孤儿与死端/覆盖/连通性 + 启发式聚合分；分项与 failed_checks 为准）| ✅ C58+AB: qi 67.23 / blocked 1032 / cyclic 289 |
+| `gem_sample` | 通量空间采样（ACHR 默认 / OptGP 大样本；growth_floor_fraction 受限空间；全空间 vs 受限边界声明）| ✅ C58+AB: 全空间 median 0.019 / floor-0.9 min 0.468 |
 
 架构/决策见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/DECISIONS-2026-08-29.md](docs/DECISIONS-2026-08-29.md)。
 

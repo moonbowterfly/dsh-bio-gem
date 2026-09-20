@@ -1,6 +1,6 @@
 # validate.py — dsh-bio-gem 五道验证关卡（M1）
 # G1 加载统计 / G2 内部反应元素平衡 / G3 生长真实性 / G4 底物表型(条件) / G5 必需基因抽检(条件)
-# 规格: docs/ARCHITECTURE.md §5；判据口径 = FBA objective_value（mmol/gDW/h，不用 μ）
+# 规格: docs/ARCHITECTURE.md §5；判据口径 = FBA objective_value（biomass 归一化 → 比生长速率 μ，单位 1/h）
 # 实现从 HANDOFF-03 五道关卡协议产品化（农杆菌项目验证过的逻辑）
 import re
 import os
@@ -197,7 +197,7 @@ class Validator:
             "ratio_vs_reference": round(ratio, 4) if ratio is not None else None,
             "checks": {"medium>0": ok_grow, "no_carbon==0": ok_noc, "closed==0": ok_closed},
             # 阶段A-M4 口径声明（只增）：单点 FBA 值非硬结论
-            "units": "mmol/gDW/h",
+            "units": "1/h",
             "point_value_note": "单点 FBA 值，非解空间硬结论；条件对比请用 gem_fluxscan 区间分离判定",
         }
         return rep
@@ -313,7 +313,7 @@ class Validator:
             results.append({"substrate": sub, "published": int(pub), "predicted": int(pred),
                             "growth": round(g, 6), "exchange": exid or None, "match": bool(ok),
                             # 阶段A-M4 口径声明（只增）：每底物 growth 为单点 FBA 值
-                            "units": "mmol/gDW/h",
+                            "units": "1/h",
                             "point_value_note": "单点 FBA 值，非解空间硬结论；条件对比请用 gem_fluxscan 区间分离判定"})
         rep = {
             "status": "PASS" if rows and matched / len(rows) >= 0.8 else ("WARN" if rows else "SKIP"),
@@ -373,7 +373,7 @@ class Validator:
         medium, _preset = expand_medium(medium)
         resolved_med, unresolved = resolve_medium(self.m, medium) if medium else ({}, [])
         report = {"model": self.path,
-                  "units": {"growth": "mmol/gDW/h", "note": "objective_value 是 FBA 通量（mmol/gDW/h），不是比生长速率 μ（h⁻¹）"},
+                  "units": {"growth": "1/h", "note": "growth 为比生长速率 μ：biomass 反应归一化到 1 gDW 时其通量数值等于 μ（标准 GEM 约定）；非归一化模型的 growth 应以 mmol/gDW/h 解读"},
                   # G0 模型数据质量前置诊断：未映射前体等数据问题会让 G2/G3 与 gapfind 的
                   # 结论失真（实测 iNX1344_v3：gapfind 报的 5 个 L3 缺口实为未映射前体所致）
                   "g0": model_coherence(self.m),

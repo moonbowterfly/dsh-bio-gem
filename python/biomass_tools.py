@@ -4,7 +4,7 @@
 # apply（显式）: biomass_profile 覆盖表（op=set|add|remove）→ 副本替换 biomass → 强制 G1-G6 重验
 #               + 三联对照（生长/表型/必需基因 delta）→ model_lineage 追加（有 card 时）
 # 原则: 默认不应用任何 profile；生长变差 WARN 不阻塞；C58 CarveMe AB 0.624 锚点保护（delta 如实报告）。
-# units: growth 一律 mmol/gDW/h。
+# units: growth 一律 1/h（比生长速率；biomass 反应 gDW 归一化口径，数值 = μ）。
 import os
 import re
 import sys
@@ -18,7 +18,7 @@ import cobra
 EX_PREFIX = ("EX_", "DM_", "SK_")
 DEFAULT_UNIVERSAL = r"D:\Program\hermes\temp\gem_universal\iML1515.xml"
 DEFAULT_INX = r"F:\A_NGJ plan\Zcode\models\iNX1344_v4.xml"
-GROWTH_UNITS = "mmol/gDW/h"
+GROWTH_UNITS = "1/h"
 EPS = 1e-6
 
 # 分类词表（name 规约匹配为主，id 规约为辅；覆盖 BiGG/ModelSEED/MetaCyc 常见命名）

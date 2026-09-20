@@ -73,7 +73,7 @@ def scan_precursors(model_path, medium=None, max_precursors=200):
         "medium_applied_exchanges": medium_applied,
         "medium_unresolved": unresolved,
         "baseline_flux": round(baseline, 6),
-        "units": "mmol/gDW/h",
+        "units": "1/h",
         "point_value_note": "单点 FBA 值，非解空间硬结论",
         "blocking_precursors": [],
         "n_blocking": 0,

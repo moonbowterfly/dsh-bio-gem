@@ -401,7 +401,7 @@ def register_phenotype(model_path, g4_results, condition=None, lineage_version=N
             "type": "phenotype",
             "content": (f"底物 {sub} 预测{'生长' if r.get('predicted') else '不生长'}"
                         f"（文献={r.get('published')}，匹配={r.get('match')}，"
-                        f"growth={r.get('growth')} mmol/gDW/h）"),
+                        f"growth={r.get('growth')} 1/h）"),
             "model": model_path,
             "model_lineage_version": lineage_version,
             "condition": condition,
