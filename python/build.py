@@ -138,6 +138,14 @@ def build(input_spec, name=None, medium=None, venv=None, out_dir=None, progress_
     os.makedirs(out_dir, exist_ok=True)
     out_xml = os.path.join(out_dir, name + ".xml")
 
+    # 0) 运行时自举（零手动安装）：carve + diamond 缺失时自动部署（幂等，就绪时秒过）
+    from bootstrap_carveme import ensure_carveme
+    boot = ensure_carveme(venv=venv, progress_path=progress_path)
+    if not boot.get("ready"):
+        _log(progress_path, {"event": "bootstrap_failed", "error": boot.get("error")})
+        raise RuntimeError("CarveMe 运行时不可用：" + str(boot.get("error")))
+    _log(progress_path, {"event": "bootstrap_ok", "action": boot.get("action")})
+
     # 1) carve（自带 M9 gapfill，CarveMe 原生最小培养基）
     st = time.time()
     if not (os.path.exists(out_xml) and os.path.getmtime(out_xml) > os.path.getmtime(proteins)):
@@ -195,7 +203,7 @@ def build(input_spec, name=None, medium=None, venv=None, out_dir=None, progress_
     # 4) 模型卡（schema v2 起步：supported_mediums 由验证结果得出）
     supported = [
         {"medium_name": "M9", "ex_reactions": sorted(med_m9),
-         "growth_rate": g3_m9.get("growth_medium"), "units": "mmol/gDW/h",
+         "growth_rate": g3_m9.get("growth_medium"), "units": "1/h",
          "validation_status": "verified_G3" if g3_m9.get("status") == "PASS" else "unverified"},
     ]
     if target and target.get("g3") == "PASS":
@@ -204,7 +212,7 @@ def build(input_spec, name=None, medium=None, venv=None, out_dir=None, progress_
             tname = medium.get("medium_name") or "custom"
         supported.append({
             "medium_name": tname, "ex_reactions": target.get("resolved_exchanges"),
-            "growth_rate": target.get("growth"), "units": "mmol/gDW/h",
+            "growth_rate": target.get("growth"), "units": "1/h",
             "validation_status": "verified_G3_G4" if target.get("gapfixes_applied", 0) == 0 else "verified_G3_only",
         })
     # 模型卡（schema v2：init_card 统一基座 —— lineage v0.1.0 起始 + changelog=[build]）
