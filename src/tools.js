@@ -1,6 +1,6 @@
-// dsh-bio-gem — 工具层（defineTool 注册，20 语义化工具，2026-08-30 阶段C-C4 起）
+// dsh-bio-gem — 工具层（defineTool 注册，23 语义化工具，2026-08-30 阶段C-C4 起）
 // 全部执行走 python/gem_ops.py（JSON stdin 协议）或 build.py CLI（gem_build 长任务）。
-// op 与工具对照：19 op（含 fluxscan/sensitivity/ledger/benchmark/secretion/double_knockout/enrichment/targets）+ build CLI；详见 docs/ARCHITECTURE.md §3。
+// op 与工具对照：23 op + gem_build（build CLI 直调）；详见 docs/ARCHITECTURE.md §3。
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { join } from 'node:path'
 import { dirname, isAbsolute } from 'node:path'
@@ -44,7 +44,7 @@ function buildTool() {
       'engine=gapseq（质量档，需本机 WSL2 gapseq 环境）：输入核苷酸 FASTA（*.fna），WSL 桥 gapseq doall → 模型拷回 → 目标介质验证，' +
       '约 30-60 分钟（后台进度日志旁观，不要误判超时）。' +
       '输出标准 SBML（fbc v2）+ 模型卡（sidecar JSON：引擎版本/验证结果/补洞记录）。' +
-      '生长/通量数值为单点 FBA 值（非硬结论）；条件间对比用 gem_fluxscan（区间制）。' +
+      '生长值为比生长速率口径（1/h，biomass 归一化）；通量为单点 FBA 值（mmol/gDW/h，非硬结论）。条件间通量对比用 gem_fluxscan（区间制）。' +
       '触发词：构建代谢模型、基因组转模型、建GSMM、carveme 建模、gapseq 建模。',
     parameters: {
       input: {
@@ -114,7 +114,7 @@ export function registerTools(ctx) {
       'G2 内部反应元素平衡（C/N/P/S 必须为 0，H/O 单独报告）、G3 生长真实性（声明培养基上有碳源>0、无碳=0、全关=0）、' +
       'G4 底物表型对照（需 phenotype_table 路径，条件执行）、G5 必需基因抽检（需 essential_test 基因列表，条件执行）。' +
       'medium 用自然名成分（如 D-Glucose/NH3/O2），跨引擎自动解析。G2 的已知生物质方程簿记偏差（如 bio1）报 WARN 不阻塞。' +
-      '生长/通量数值为单点 FBA 值（非硬结论）；条件间对比用 gem_fluxscan（区间制）。' +
+      '生长值为比生长速率口径（1/h，biomass 归一化）；通量为单点 FBA 值（mmol/gDW/h，非硬结论）。条件间通量对比用 gem_fluxscan（区间制）。' +
       '触发词：验证模型、质量检查、五道关卡。',
     parameters: {
       model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
@@ -134,7 +134,7 @@ export function registerTools(ctx) {
       '代谢模型缺口分级诊断：L1 缺胞外交换（培养基成分无对应 EX）、L2 缺转运（e0 代谢物无入胞出口）、' +
       'L3 内部路径（有交换+转运但 FBA 不生长）。输出分级缺口清单 + 每条是否规则可修（fixable）。' +
       '已知规律：多数「不能利用某碳源」缺口是 L1/L2 而非 L3。medium 支持自然名（跨引擎解析）。' +
-      '生长/通量数值为单点 FBA 值（非硬结论）；条件间对比用 gem_fluxscan（区间制）。' +
+      '生长值为比生长速率口径（1/h，biomass 归一化）；通量为单点 FBA 值（mmol/gDW/h，非硬结论）。条件间通量对比用 gem_fluxscan（区间制）。' +
       '触发词：诊断缺口、为什么不能用这个碳源、gapfind。',
     parameters: {
       model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
@@ -191,7 +191,7 @@ export function registerTools(ctx) {
       '表型回填迭代：对模型跑 G4 表型对照（phenotype_table：substrate<TAB>published 0/1，如 Biolog/文献表），' +
       '对「应生长但模型不长」的底物逐个 gapfind 分级 → L1/L2 交换/转运规则自动补洞（累积修复）→ L3 内部路径列候选清单 → 重跑 G4 对比匹配率。' +
       'medium 推荐 {"medium_name": "AB"}。输出 before/after 匹配率 + 修复清单 + L3 待处理项。' +
-      '生长/通量数值为单点 FBA 值（非硬结论）；条件间对比用 gem_fluxscan（区间制）。' +
+      '生长值为比生长速率口径（1/h，biomass 归一化）；通量为单点 FBA 值（mmol/gDW/h，非硬结论）。条件间通量对比用 gem_fluxscan（区间制）。' +
       '触发词：表型回填、提高表型匹配、Biolog 校准、为什么这个底物不长。',
     parameters: {
       model: { type: 'string', required: true, description: 'SBML 文件绝对路径（将基于副本修复，原文件不动）' },
@@ -214,7 +214,7 @@ export function registerTools(ctx) {
           '若提供 gene_table（gem_annotate 返回的 <base>.gene_table.tsv），输出额外含 essential_gene_details（' +
           '每必需基因带 locus_tag/product 功能注释——坐标型基因 ID 无此表时是不可解读的）。' +
           '结果可用于模型卡"必需基因"章节（对照文献/实验必需基因集即召回率）。' +
-          '生长/通量数值为单点 FBA 值（非硬结论）；条件间对比用 gem_fluxscan（区间制）。' +
+          '生长值为比生长速率口径（1/h，biomass 归一化）；通量为单点 FBA 值（mmol/gDW/h，非硬结论）。条件间通量对比用 gem_fluxscan（区间制）。' +
           '触发词：必需基因扫描、全量必要基因、essentiality scan、敲除全扫。',
         parameters: {
           model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
@@ -271,7 +271,7 @@ export function registerTools(ctx) {
       '防过补第五闸门：历史累计新增 ≤ max(5, 5%·总反应)，超限返回 confirm_required 需显式 confirm_budget=true。\n' +
       '补后自动 validate G1-G6 全跑，G6（ATP 泄漏哨兵）非 PASS 自动回滚本批改动。' +
       '返回每底物 before/after sole 生长 + verdict（fixed/not_fixable + 不可补证据链）。\n' +
-      '生长/通量数值为单点 FBA 值（非硬结论）；条件间对比用 gem_fluxscan（区间制）。' +
+      '生长值为比生长速率口径（1/h，biomass 归一化）；通量为单点 FBA 值（mmol/gDW/h，非硬结论）。条件间通量对比用 gem_fluxscan（区间制）。' +
       '触发词：补内部路径、L3 补洞、白名单补反应、为什么补了交换还是不长。',
     parameters: {
       model: { type: 'string', required: true, description: 'SBML 文件绝对路径（原文件不动，修复写到 out）' },
@@ -296,10 +296,10 @@ export function registerTools(ctx) {
       '（组分个数、原子总量、类别分布：氨基酸/核酸/脂质/辅因子/金属/其他）；reference 可选 iML1515/both 对照' +
       '（含 iNX1344_v4 按代谢物名同义尽力翻译，翻不了明示 unmapped N 个，不强行全翻）。\n' +
       'action=apply（显式修改）：必须给 biomass_profile 覆盖表 [{"met_id","coeff","op":"set|add|remove"}]，' +
-      '基于副本替换 biomass → 强制 G1-G6 重验 + 三联对照（生长率/表型匹配率/必需基因 delta，单位 mmol/gDW/h）' +
+      '基于副本替换 biomass → 强制 G1-G6 重验 + 三联对照（生长率/表型匹配率/必需基因 delta；生长率单位 1/h）' +
       '→ 输出 before/after 对照 + 新模型（原文件不动=天然可回滚）+ 模型卡 lineage 追加（有 card 时）。' +
       '生长变差 WARN 不阻塞；默认不应用任何 profile。' +
-      '生长/通量数值为单点 FBA 值（非硬结论）；条件间对比用 gem_fluxscan（区间制）。' +
+      '生长值为比生长速率口径（1/h，biomass 归一化）；通量为单点 FBA 值（mmol/gDW/h，非硬结论）。条件间通量对比用 gem_fluxscan（区间制）。' +
       '触发词：biomass 精修、看生物质组成、改 biomass 系数、目标函数调整。',
     parameters: {
       action: { type: 'string', enum: ['inspect', 'apply'], required: true, description: 'inspect=只读诊断；apply=显式应用覆盖表' },
@@ -392,7 +392,7 @@ export function registerTools(ctx) {
       'literature_contradicted/experimentally_verified）/source_refs/comparison_refs（维护 updated_at）。' +
       '只读/追加/更新，不删行；损坏行跳过并报 corrupt_rows 不阻塞。' +
       '账本预测默认 status=unverified——实验或文献兑现前不应当作事实引用（基率披露见 gem_report 的 ledger_summary）。' +
-      '生长/通量数值为单点 FBA 口径（mmol/gDW/h）；条件间通量对比用 gem_fluxscan（区间制）。' +
+      '生长值为比生长速率口径（1/h，biomass 归一化）；通量为单点 FBA 值（mmol/gDW/h，非硬结论）。条件间通量对比用 gem_fluxscan（区间制）。' +
       '触发词：预测账本、查询预测、更新预测状态、预测追踪、ledger。',
     parameters: {
       action: { type: 'string', enum: ['list', 'query', 'update'], required: true, description: 'list=分页列出；query=条件过滤；update=改状态/来源' },
@@ -422,7 +422,7 @@ export function registerTools(ctx) {
       '必需性对比（复用 essential_scan；任一侧 wt<=EPS 判退化只报结构信息不做垃圾对比，基因映射尽力而为如实报覆盖率，' +
       'reference_essential 文献值仅标注不冒充模型输出）/ 表型对比（G4 sole）/ 可复现性评估 / 账本 comparison_refs ' +
       '回填（update 语义幂等可重入）。export_md 落盘论文级 Markdown。' +
-      '生长/通量数值为单点 FBA 口径（mmol/gDW/h）；条件间通量对比用 gem_fluxscan（区间制）。' +
+      '生长值为比生长速率口径（1/h，biomass 归一化）；通量为单点 FBA 值（mmol/gDW/h，非硬结论）。条件间通量对比用 gem_fluxscan（区间制）。' +
       '触发词：模型对比、两个模型比较、基准、benchmark、跨模型校准。',
     parameters: {
       model_a: { type: 'string', required: true, description: '模型 A SBML 绝对路径' },
@@ -451,7 +451,7 @@ export function registerTools(ctx) {
       '或显式 mode=full（注意可能很大）。export_csv 全量落盘。**边界声明：未考虑毒性/渗透压/调控，纯拓扑/线性规划结果**——可分泌≠实际会分泌。' +
       '被测模型 wt<=EPS（介质下不生长，如 AB 预设对非根瘤菌模型）→ degenerate=true 不扫描不登记，提示介质适配。' +
       '每个可分泌代谢物自动登记账本 type=secretion（幂等）。' +
-      '生长/通量数值为单点 FBA 口径（mmol/gDW/h）；条件间通量对比用 gem_fluxscan（区间制）。' +
+      '生长值为比生长速率口径（1/h，biomass 归一化）；通量为单点 FBA 值（mmol/gDW/h，非硬结论）。条件间通量对比用 gem_fluxscan（区间制）。' +
       '触发词：可分泌谱、分泌能力、secretion、能产什么、代谢物分泌。',
     parameters: {
       model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
@@ -476,7 +476,7 @@ export function registerTools(ctx) {
       '输出 {pair, single_a_growth, single_b_growth, double_growth, rationale（GPR先验/全扫）, source}。' +
       '**假设声明：细菌双敲验证率无大规模实验数据支撑，本结果=假设生成，供实验设计参考非结论**。' +
       '被测模型 wt<=EPS → degenerate=true 不扫描不登记（提示介质适配）。每对自动登记账本 type=synthetic_lethal（幂等）。' +
-      '生长/通量数值为单点 FBA 口径（mmol/gDW/h）；条件间通量对比用 gem_fluxscan（区间制）。' +
+      '生长值为比生长速率口径（1/h，biomass 归一化）；通量为单点 FBA 值（mmol/gDW/h，非硬结论）。条件间通量对比用 gem_fluxscan（区间制）。' +
       '触发词：双敲、合成致死、double knockout、基因对敲除、互补基因。',
     parameters: {
       model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
@@ -556,6 +556,63 @@ export function registerTools(ctx) {
     },
     op: 'precursor_scan',
     timeoutMs: 300_000,
+  })))
+
+  // gem_quality：模型质量报告（gem-qi-v1：MEMOTE 风格分项检查 + 启发式聚合分）
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_quality',
+    description:
+      '模型质量报告（quality）：一份可分解的质量审计——blocked_reactions（不可通量反应，按当前介质口径）/ ' +
+      'elemental_balance（元素平衡）/ orphan_metabolites（只消耗无生成）/ dead_end_metabolites（只生成无消耗）/ ' +
+      'gpr_coverage（反应级 GPR 覆盖）/ annotation_coverage（注释覆盖）/ ' +
+      'connectivity（代谢物-反应网络连通分量）。输出 quality_index（0-100 启发式聚合，gem-qi-v1）+ ' +
+      'raw_metrics 分项原始值 + failed_checks + not_assessable_checks。' +
+      '⚠️ quality_index 仅用于快速横向比较，不得作为单一质量结论引用——分项指标与 failed_checks 才是判断依据。' +
+      'cyclic_reactions（潜在稳态环路）在独立的化学计量+方向锥上以 cobra.fastcc 计算（确定性口径；' +
+      '大模型上该检查约数分钟——C58 实测全量约 8 分钟）；如需快速子集可只用 checks 指定部分检查。' +
+      '与 gem_validate 的分工：validate 是构建流程的六道关卡（G0-G6，含生长/表型真伪验证）；' +
+      'quality 是模型质量的横向审计（对标 MEMOTE 检查维度），不改模型、不跑生长。' +
+      '触发词：模型质量、质量报告、质量评分、MEMOTE、模型好不好、有多少孤儿代谢物。',
+    parameters: {
+      model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
+      medium: {
+        type: 'object', additionalProperties: true,
+        description: '培养基：{"medium_name": "AB"/"M9"}（内置完整成分）或自然名成分字典；缺省=按模型自带 exchange bounds 计算 blocked（口径写入 notes）',
+      },
+      checks: {
+        type: 'array', items: { type: 'string' },
+        description: '可选：只跑指定检查子集（blocked_reactions/cyclic_reactions/elemental_balance/orphan_metabolites/dead_end_metabolites/gpr_coverage/annotation_coverage/connectivity）。缺省=全部；大模型上 cyclic_reactions 约数分钟（fastcc 方向锥），如只需快速体检可只传轻量子集',
+      },
+      export_csv: { type: 'string', description: '完整清单 CSV 落盘路径（ids_sample 只给前 25 条；全量走此参数）' },
+    },
+    op: 'quality',
+    timeoutMs: 900_000,
+  })))
+
+  // gem_sample：通量空间采样（默认 ACHR Windows-safe；growth_floor 受限空间）
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_sample',
+    description:
+      '通量空间采样（sample）：对模型可行通量空间做统计采样（默认 ACHR，Windows 安全；大样本可 method=optgp）。' +
+      '返回 growth 分布（median/mean/min/max/q05-q95）+ 指定反应（缺省=生长反应+变化最大的 top 20）的 ' +
+      'median/q05/q95/sign_probability/near_zero_fraction。' +
+      '⚠️ 必读 boundary 字段（边界声明）：缺省采样的是全 feasible space——全空间均匀采样 ≠ 生物学上有意义的活跃状态' +
+      '（实测 C58 全空间采样生长中位数远低于最大生长，差 2 个数量级）；关心近最优生长态请传 growth_floor_fraction（如 0.9）。' +
+      '大模型首次调用 ACHR 初始化约 2-3 分钟（属正常等待，勿重复调用）；同 seed 结果可复现。' +
+      '触发词：通量采样、采样分布、flux sampling、通量的分布范围、这个反应通常有多少通量。',
+    parameters: {
+      model: { type: 'string', required: true, description: 'SBML 文件绝对路径' },
+      medium: { type: 'object', additionalProperties: true, description: '培养基：{"medium_name": "AB"} 或自然名成分字典；缺省用模型自带边界' },
+      n: { type: 'number', description: '样本数（默认 1000；范围 10-20000）' },
+      method: { type: 'string', enum: ['auto', 'achr', 'optgp'], description: '采样器：auto（默认→ACHR）| achr | optgp（大样本，Windows 下实验性——不可用时会显式拒绝）' },
+      thinning: { type: 'number', description: '稀释步长（默认 100；越大越独立、初始化越久）' },
+      growth_floor_fraction: { type: 'number', description: '生长下限分数（0-1）：给定后仅在「生长 ≥ f×最大生长」的受限空间采样（推荐 0.9）；缺省=全空间采样' },
+      reactions: { type: 'array', items: { type: 'string' }, description: '要统计的反应 id 列表（缺省=生长反应+变化最大 top 20）' },
+      seed: { type: 'number', description: '随机种子（默认 42；同 seed 可复现）' },
+      export_csv: { type: 'string', description: '全样本矩阵 CSV 落盘路径' },
+    },
+    op: 'sample',
+    timeoutMs: 900_000,
   })))
 
 

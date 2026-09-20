@@ -310,6 +310,48 @@ def op_sensitivity(args):
 
 
 # ---------------------------------------------------------------------------
+# op: quality — gem-qi-v1 模型质量摘要（只读）
+# ---------------------------------------------------------------------------
+def op_quality(args):
+    from quality import quality_report
+    model = args.get("model")
+    if not model or not os.path.exists(model):
+        return {"ok": False, "error": f"model file not found: {model}"}
+    try:
+        result = quality_report(
+            model, medium=args.get("medium"), checks=args.get("checks"),
+            export_csv=args.get("export_csv"))
+    except (ValueError, OSError) as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, "result": result}
+
+
+# ---------------------------------------------------------------------------
+# op: sample — COBRA 通量空间采样（默认 Windows-safe ACHR）
+# ---------------------------------------------------------------------------
+def op_sample(args):
+    from sampling import sample_fluxes
+    model = args.get("model")
+    if not model or not os.path.exists(model):
+        return {"ok": False, "error": f"model file not found: {model}"}
+    try:
+        result = sample_fluxes(
+            model,
+            medium=args.get("medium"),
+            n=args.get("n", 1000),
+            method=args.get("method", "auto"),
+            thinning=args.get("thinning", 100),
+            growth_floor_fraction=args.get("growth_floor_fraction"),
+            reactions=args.get("reactions"),
+            seed=args.get("seed", 42),
+            export_csv=args.get("export_csv"),
+        )
+    except (ValueError, OSError) as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, "result": result}
+
+
+# ---------------------------------------------------------------------------
 # 分发器
 # ---------------------------------------------------------------------------
 OPS = {
@@ -323,6 +365,8 @@ OPS = {
     "annotate": op_annotate,
     "media_resolve": op_media_resolve,
     "l3_fix": op_l3_fix,
+    "quality": op_quality,
+    "sample": op_sample,
 }
 
 

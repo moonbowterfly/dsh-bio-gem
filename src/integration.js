@@ -3,6 +3,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
 import { pythonCandidates } from './python.js'
+import { TOOLS_MANIFEST, buildCapabilitiesReport } from './capabilities.js'
 
 /**
  * dsh-bio-gem — hosted-domain integration protocol v1 (read-only batch).
@@ -19,6 +20,7 @@ export const RUNTIME_PROBE_CACHE_MS = 60_000
 export const GAPSEQ_PROBE_CACHE_MS = 300_000
 export const INTEGRATION_FEATURES = [
   'status',
+  'capabilities',
   'model-store',
   'ledger',
   'exports',
@@ -350,6 +352,11 @@ export function registerIntegrationRoutes(ctx, options = {}) {
       path: `${INTEGRATION_PREFIX}/v1/status`,
       handler: guardedGet(() => service.status()),
     },
+    {
+      kind: 'exact',
+      path: `${INTEGRATION_PREFIX}/v1/capabilities`,
+      handler: guardedGet(() => service.capabilities()),
+    },
   ]
   const disposers = routes.map((route) => webServer.register(route))
   return () => {
@@ -430,6 +437,33 @@ export function createIntegrationService(options = {}) {
     }
   }
 
+  /** 依赖检查（status 与 capabilities 共用；语义与既有 status 一致）。 */
+  async function collectChecks() {
+    const python = await readPython()
+    const gapseq = readGapseq()
+    const carveme = carvemeStatus(dataRoot)
+    const checks = [
+      statusCheck(
+        'python.cobra',
+        python.selected ? 'ok' : 'missing',
+        python.selected
+          ? `cobra ${python.selected.cobraVersion ?? 'available'} @ ${python.selected.path}`
+          : '未找到可 import cobra 的 Python 解释器。',
+      ),
+      statusCheck(
+        'runtime.carveme',
+        carveme.available ? 'ok' : 'missing',
+        carveme.hint,
+      ),
+      statusCheck(
+        'runtime.gapseq',
+        gapseq.available === true ? 'ok' : gapseq.available === null ? 'warn' : 'missing',
+        gapseq.detail ?? (gapseq.available ? 'gapseq 只读探测通过。' : 'gapseq 只读探测未就绪。'),
+      ),
+    ]
+    return { python, gapseq, carveme, checks }
+  }
+
   return {
     async health() {
       return {
@@ -444,29 +478,13 @@ export function createIntegrationService(options = {}) {
       }
     },
 
+    async capabilities() {
+      const { checks } = await collectChecks()
+      return { ok: true, value: buildCapabilitiesReport({ pluginVersion, checks }) }
+    },
+
     async status() {
-      const python = await readPython()
-      const gapseq = readGapseq()
-      const carveme = carvemeStatus(dataRoot)
-      const checks = [
-        statusCheck(
-          'python.cobra',
-          python.selected ? 'ok' : 'missing',
-          python.selected
-            ? `cobra ${python.selected.cobraVersion ?? 'available'} @ ${python.selected.path}`
-            : '未找到可 import cobra 的 Python 解释器。',
-        ),
-        statusCheck(
-          'runtime.carveme',
-          carveme.available ? 'ok' : 'missing',
-          carveme.hint,
-        ),
-        statusCheck(
-          'runtime.gapseq',
-          gapseq.available === true ? 'ok' : gapseq.available === null ? 'warn' : 'missing',
-          gapseq.detail ?? (gapseq.available ? 'gapseq 只读探测通过。' : 'gapseq 只读探测未就绪。'),
-        ),
-      ]
+      const { python, gapseq, carveme, checks } = await collectChecks()
       return {
         ok: true,
         value: {

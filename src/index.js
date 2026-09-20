@@ -15,7 +15,7 @@ export const name = 'dsh-bio-gem'
  *
  * `webServer` 是**可选**服务（非 web 部署不提供），改用 apply 内的动态注入
  * `ctx.inject(['webServer'], cb)`（官方 dsh 插件同款模式）：服务可用时注册
- * 只读 integration 路由，不可用时 21 个工具与 skill 照常注册。
+ * 只读 integration 路由，不可用时 23 个工具与 skill 照常注册。
  */
 export const inject = ['tools', 'skills']
 

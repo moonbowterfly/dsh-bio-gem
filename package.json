@@ -40,8 +40,8 @@
   },
   "scripts": {
     "smoke": "node test/smoke.js",
-    "test": "node test/smoke.js --skip-build && node test/integration.js && node --import ./test/register-dsh-tools.mjs test/optional-injection.js",
-    "test:full": "node test/smoke.js && node test/integration.js && node --import ./test/register-dsh-tools.mjs test/optional-injection.js"
+    "test": "node test/smoke.js --skip-build && node test/integration.js && node --import ./test/register-dsh-tools.mjs test/optional-injection.js && node --import ./test/register-dsh-tools.mjs test/check-capabilities.mjs && node test/check-counts.mjs",
+    "test:full": "node test/smoke.js && node test/integration.js && node --import ./test/register-dsh-tools.mjs test/optional-injection.js && node --import ./test/register-dsh-tools.mjs test/check-capabilities.mjs && node test/check-counts.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-tools": "*"

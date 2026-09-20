@@ -236,7 +236,7 @@ async function main() {
   const nReg = (toolsSrc.match(/ctx\.tools\.register\(/g) || []).length
   // 注意：这是源码正则计数（防手滑删注册）；**真注册验证**由 npm test 接线的
   // test/optional-injection.js（真实 plugin.apply()）承担——2026-09-19 审计 III-6。
-  check('tools: 21 个语义化工具注册（源码计数）', nReg === 21, `got ${nReg}`)
+  check('tools: 23 个语义化工具注册（源码计数）', nReg === 23, `got ${nReg}`)
 
   // 7) Q2 工程质量件：SBML 往返保真（GPR 防丢）+ 模型卡 v2 selftest
   if (HAS_MAIN) {
