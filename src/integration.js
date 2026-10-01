@@ -29,7 +29,11 @@ export const INTEGRATION_FEATURES = [
 ]
 
 const PLUGIN_ID = 'dsh-bio-gem'
-const PLUGIN_VERSION = '0.1.13'
+// 版本号从 package.json 实时读，避免 bump 版本时漏改此处导致 /health 自报旧版本
+// （第二真值源曾导致 galatea 报 0.1.2 而磁盘已是 0.1.3；重启无效、非缓存）。
+const PLUGIN_VERSION = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+).version
 
 function defaultDataRoot() {
   const dshHome = process.env.DSH_HOME ?? join(os.homedir(), '.dsh')

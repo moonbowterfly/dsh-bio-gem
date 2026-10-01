@@ -30,9 +30,21 @@
     "README.md",
     "LICENSE"
   ],
-  "keywords": ["dsh", "deepseek-harness", "dsh-plugin", "metabolic-model", "GEM", "SBML", "carveme", "cobra", "bioinformatics"],
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "dsh-plugin",
+    "metabolic-model",
+    "GEM",
+    "SBML",
+    "carveme",
+    "cobra",
+    "bioinformatics"
+  ],
   "license": "MIT",
-  "engines": { "node": "^22.19 || >=24" },
+  "engines": {
+    "node": "^22.19 || >=24"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
@@ -40,13 +52,15 @@
   },
   "scripts": {
     "smoke": "node test/smoke.js",
-    "test": "node test/smoke.js --skip-build && node test/integration.js && node --import ./test/register-dsh-tools.mjs test/optional-injection.js && node --import ./test/register-dsh-tools.mjs test/check-capabilities.mjs && node test/check-counts.mjs",
+    "test": "node test/check-version-source.mjs && node test/smoke.js --skip-build && node test/integration.js && node --import ./test/register-dsh-tools.mjs test/optional-injection.js && node --import ./test/register-dsh-tools.mjs test/check-capabilities.mjs && node test/check-counts.mjs",
     "test:full": "node test/smoke.js && node test/integration.js && node --import ./test/register-dsh-tools.mjs test/optional-injection.js && node --import ./test/register-dsh-tools.mjs test/check-capabilities.mjs && node test/check-counts.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-tools": "*"
   },
   "peerDependenciesMeta": {
-    "@deepseek-ai/dsh-tools": { "optional": true }
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    }
   }
 }
