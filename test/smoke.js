@@ -51,6 +51,9 @@ function findAsset(relativeCandidates) {
 
 const C58 = findAsset(['models/gapseq_C58/C58.xml'])
 const C58P1 = findAsset(['models/gapseq_C58/C58_P1.xml'])
+// 表型表用仓库内 fixture：曾硬编码 D:/Program/hermes/temp/ 下的临时文件，
+// 该文件被 temp 清理删除后断言会以「数据缺失」伪装成「断言失败」（2026-10-01 实测）。
+const PHENOTYPE_TABLE = join(REPO, 'test', 'fixtures', 'phenotype-table.tsv')
 const INX4 = findAsset(['models/iNX1344_v4.xml'])
 // FAA 是 build 产物（独立于项目模型目录）：显式 root 模式下在 root 内找，否则用默认路径
 const FAA = explicitRoot
@@ -401,7 +404,7 @@ async function main() {
     const benchSelf = await runPy('gem_ops.py', {
       op: 'benchmark',
       args: { model_a: C58, model_b: C58P1, medium: { medium_name: 'AB' },
-              phenotype_table: 'D:/Program/hermes/temp/gem_test_phenotype.tsv',
+              phenotype_table: PHENOTYPE_TABLE,
               ledger_refs: false },
     })
     const bs = benchSelf?.result ?? {}

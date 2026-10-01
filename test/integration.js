@@ -4,7 +4,7 @@
  * Run: node test/integration.js
  */
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
@@ -74,23 +74,30 @@ await test('health exposes the frozen protocol identity without a runtime probe'
   })
   const response = await service.health()
 
-  assert.deepEqual(response, {
-    ok: true,
-    value: {
-      pluginId: 'dsh-bio-gem',
-      pluginVersion: '0.1.13',
-      protocolMajor: 1,
-      protocolMinors: [0],
-      features: [
-        'status',
-        'model-store',
-        'ledger',
-        'exports',
-        'carveme-runtime',
-        'gapseq-probe',
-      ],
-    },
-  })
+  // ⚠️ 不再写死版本号与完整 features 列表：2026-10-01 实测这两个断言在 bump
+  // 后失效（仍期望 0.1.13 / 不含 capabilities），而 npm test 的 smoke 短路
+  // 把它掩盖成「只有 1 个红灯」。版本改为从 package.json 取，features 改为
+  // 「必须包含」语义——新增能力不应让本测试失败。
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  const REQUIRED_FEATURES = [
+    'status',
+    'model-store',
+    'ledger',
+    'exports',
+    'carveme-runtime',
+    'gapseq-probe',
+  ]
+  assert.equal(response.ok, true)
+  assert.equal(response.value.pluginId, 'dsh-bio-gem')
+  assert.equal(response.value.pluginVersion, pkg.version)
+  assert.equal(response.value.protocolMajor, 1)
+  assert.deepEqual(response.value.protocolMinors, [0])
+  for (const f of REQUIRED_FEATURES) {
+    assert.ok(
+      response.value.features.includes(f),
+      `features 必须包含 ${f}，实际：${JSON.stringify(response.value.features)}`,
+    )
+  }
   assert.equal(runtimeProbes, 0)
 })
 
