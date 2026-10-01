@@ -29,7 +29,7 @@ export const INTEGRATION_FEATURES = [
 ]
 
 const PLUGIN_ID = 'dsh-bio-gem'
-const PLUGIN_VERSION = '0.1.12'
+const PLUGIN_VERSION = '0.1.13'
 
 function defaultDataRoot() {
   const dshHome = process.env.DSH_HOME ?? join(os.homedir(), '.dsh')
