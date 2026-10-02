@@ -15,11 +15,12 @@
       "dependency_field": "unknown_dependencies"
     },
     {
-      "name": "explicit warning check",
+      "name": "explicit warning check is unprobed, not unavailable",
       "dependency": "runtime.gapseq",
       "check_status": "warn",
-      "expected_status": "unavailable",
-      "dependency_field": "missing_dependencies"
+      "expected_status": "unknown",
+      "dependency_field": "unknown_dependencies",
+      "_note": "runtime.gapseq 在 WSL 冷启动期间就是 warn（契约：null = 尚未探测）。warn 表示「还没判定」，把它折成 unavailable 会让面板在冷启动期谎报「gapseq 不可用」，故与 missing 分开归入 unknown_dependencies。"
     }
   ]
 }
