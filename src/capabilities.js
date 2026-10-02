@@ -12,7 +12,7 @@
 // cost_class:  light  (<10s)  | medium (10s–2min) | heavy (>2min)
 // network:     none | optional | required
 // mutability:  read_only | writes_output | model_mutating
-// status:      ready | experimental | data-not-initialized  （依赖级状态由 integration 动态覆盖）
+// status:      ready | experimental | data-not-initialized  （依赖级状态由 integration 动态覆盖为 unavailable / unknown）
 // requires:    动态依赖 id 列表（对齐 integration status 的 check id；缺省即 ready）
 
 export const TOOLS_MANIFEST = [
@@ -124,11 +124,11 @@ export const CONTRACT_VERSION = '1'
 export function buildCapabilitiesReport({ pluginVersion, checks = [] } = {}) {
   const checkStatus = new Map(checks.map((c) => [c.id, c.status]))
   const tools = TOOLS_MANIFEST.map((t) => {
-    const missingDeps = (t.requires ?? []).filter((id) => {
-      const st = checkStatus.get(id)
-      return st !== undefined && st !== 'ok'
-    })
-    const effectiveStatus = missingDeps.length > 0 ? 'unavailable' : (t.status ?? 'ready')
+    const required = t.requires ?? []
+    const missingDeps = required.filter((id) => checkStatus.has(id) && checkStatus.get(id) !== 'ok')
+    const unknownDeps = required.filter((id) => !checkStatus.has(id))
+    const effectiveStatus = missingDeps.length > 0 ? 'unavailable'
+      : unknownDeps.length > 0 ? 'unknown' : (t.status ?? 'ready')
     return {
       name: t.name,
       capability: t.capability,
@@ -140,6 +140,7 @@ export function buildCapabilitiesReport({ pluginVersion, checks = [] } = {}) {
       summary: t.summary,
       ...(t.requires ? { requires: t.requires } : {}),
       ...(missingDeps.length > 0 ? { missing_dependencies: missingDeps } : {}),
+      ...(unknownDeps.length > 0 ? { unknown_dependencies: unknownDeps } : {}),
     }
   })
   return {

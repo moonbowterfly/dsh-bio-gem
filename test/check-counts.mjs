@@ -5,7 +5,8 @@
  *   工具数 = src/capabilities.js 的 TOOLS_MANIFEST.length（单源）
  *   op 数  = python/gem_ops.py 的 OPS 注册数（OPS dict 字面量 + OPS["x"]= 赋值，去重）
  *
- * 断言各处文档声称与真值一致；「没找到」报 WARN（显式化，不静默通过）。
+ * 断言各处文档声称与真值一致；skill 工具表按名称覆盖率检查，不要求人工计数句。
+ * 计数表述「没找到」报 WARN（显式化，不静默通过）。
  * Run: node test/check-counts.mjs
  */
 import { readFileSync, existsSync } from 'node:fs'
@@ -72,7 +73,21 @@ assertCount('docs/ARCHITECTURE.md', /仍照常注册 (\d+) 个 `gem_\*` 工具/g
 assertCount('src/index.js', /(\d+) 个工具与 skill/g, toolCount, 'index.js 工具数（注释）')
 assertCount('src/tools.js', /，(\d+) 语义化工具/g, toolCount, 'tools.js 头注释工具数')
 assertCount('src/tools.js', /op 与工具对照：(\d+) op/g, opCount, 'tools.js op 计数')
-assertCount('skills/gem-expert.md', /(\d+) 个语义化工具/g, toolCount, 'gem-expert skill 工具数')
+
+// skill 是按任务选工具的表，不承诺工具总数；逐名覆盖比添加一个容易漂移的计数句更有用。
+const skillFile = 'skills/gem-expert.md'
+const skillText = read(skillFile)
+const skillTools = new Set([...skillText.matchAll(/\bgem_[a-z0-9_]+\b/g)].map((match) => match[0]))
+const manifestTools = new Set(TOOLS_MANIFEST.map((tool) => tool.name))
+const missingInSkill = [...manifestTools].filter((name) => !skillTools.has(name))
+const staleInSkill = [...skillTools].filter((name) => !manifestTools.has(name))
+if (!skillText || missingInSkill.length > 0 || staleInSkill.length > 0) {
+  console.log(`FAIL  gem-expert skill 工具覆盖：缺 ${missingInSkill.join(', ') || '无'}；过时 ${staleInSkill.join(', ') || '无'}`)
+  fail += 1
+} else {
+  console.log(`PASS  gem-expert skill 工具覆盖：${skillTools.size} 个工具与 manifest 逐名一致`)
+  pass += 1
+}
 
 console.log()
 console.log(`check-counts: ${pass} pass / ${fail} fail / ${warned} warn / ${skipped} skip`)

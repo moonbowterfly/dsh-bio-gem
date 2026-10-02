@@ -1,0 +1,25 @@
+{
+  "cases": [
+    {
+      "name": "explicit missing dependency",
+      "dependency": "python.cobra",
+      "check_status": "missing",
+      "expected_status": "unavailable",
+      "dependency_field": "missing_dependencies"
+    },
+    {
+      "name": "omitted dependency check",
+      "dependency": "python.cobra",
+      "omit": true,
+      "expected_status": "unknown",
+      "dependency_field": "unknown_dependencies"
+    },
+    {
+      "name": "explicit warning check",
+      "dependency": "runtime.gapseq",
+      "check_status": "warn",
+      "expected_status": "unavailable",
+      "dependency_field": "missing_dependencies"
+    }
+  ]
+}
