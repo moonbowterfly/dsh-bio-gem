@@ -16,7 +16,7 @@ CORE_ELEMS = ("C", "N", "P", "S")   # 硬核：不平衡必须 = 0
 REPORT_ELEMS = ("H", "O")           # 报告不阻塞
 ELM_RE = re.compile(r"([A-Z][a-z]?)(\d*)")
 
-# 关卡注册器（GLM 建议 + 2026-08-29 采纳）：未来加 G7 不改主流程
+# 关卡注册器（2026-08-29 采纳）：未来加 G7 不改主流程
 GATE_REGISTRY = {}
 
 
@@ -107,7 +107,7 @@ class Validator:
         frac = 1.0 - n_bad / checked if checked else 0.0
         status = "PASS" if n_bad == 0 else ("WARN" if frac >= 0.85 else "FAIL")
 
-        # 2026-09-11 修复（agent 在真实 E2E 中发现并指出）：**公式覆盖率是 PASS 结论的
+        # 2026-09-11 修复（agent 在真实会话中发现并指出）：**公式覆盖率是 PASS 结论的
         # 作用域上界** —— 覆盖率低时「无反应不平衡」只说明被检查的那部分没问题，不能
         # 外推为整体 PASS。实测 iNX1344_v3：覆盖率 68.35% 却判 PASS，agent 据此指出
         # 「g2 的 PASS 是假阳性，因为它只检查了有 formula 的 68.35% 代谢物」。
@@ -210,7 +210,7 @@ class Validator:
         补洞后必跑（context.post_gapfill 时不再跳过）。
         P1-5 修复（2026-08-31 LBA9402 会话实测）：CarveMe 模型 ATP id 为 M_atp_c，
         旧匹配只看 atp_c/cpd00002_c0 -> 误 SKIP「未找到 ATP」——扩展命名模式 + SKIP 时列出尝试模式与模型内候选。
-        P2-9 修复（2026-09-10 iNX1344 E2E 实测）：MetaCyc/BioCyc 导出模型 ATP 为 M00002_c
+        P2-9 修复（2026-09-10 iNX1344 实测）：MetaCyc/BioCyc 导出模型 ATP 为 M00002_c
         （name='ATP'，formula 为去质子化变体），仍不在模式表内 → 二次误 SKIP（G6 直接失效）。
         改为三级通用解析：id 模式 → name 匹配 → formula 匹配，跨 ID 体系自适应。"""
         m = self.m

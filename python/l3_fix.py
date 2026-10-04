@@ -28,7 +28,7 @@ EX_PREFIX = ("EX_", "DM_", "SK_")
 SOURCE_TAG = "gem-l3fix"
 NEW_RXN_SUFFIX = "_l3fix"
 
-# BiGG 基名 -> ModelSEED cpd 号（2026-08-29 本机以 C58 名字+公式+电荷逐一验证；
+# BiGG 基名 -> ModelSEED cpd 号（2026-08-29 以 C58 名字+公式+电荷逐一验证；
 # 映射时仍做公式/电荷校验，不一致即弃用防静默污染化学计量）
 COFACTOR_BRIDGE = {
     "h2o": "00001", "atp": "00002", "nad": "00003", "nadh": "00004",
@@ -42,7 +42,7 @@ COFACTOR_BRIDGE = {
 COMP_MAP = {"c": "c0", "e": "e0", "p": "p0"}  # BiGG 区室后缀 -> gapseq 区室 id
 
 WHITELIST_DIR = os.path.join(os.path.expanduser("~"), ".dsh", "dsh-bio-gem", "whitelist")
-# 本地白名单数据库（license 守则: 仅本机，不进 git/发布包；GEM_WHITELIST_DB_DIR 可覆盖）
+# 本地白名单数据库（license 守则: 仅本地留存，不进 git/发布包；GEM_WHITELIST_DB_DIR 可覆盖）
 RXN_DB_DIR = os.environ.get("GEM_WHITELIST_DB_DIR", r"D:\Program\hermes\temp\gem_whitelist")
 DEFAULT_UNIVERSAL = r"D:\Program\hermes\temp\gem_universal\iML1515.xml"
 

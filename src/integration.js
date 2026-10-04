@@ -225,7 +225,7 @@ async function probeGapseqEnvironment({ isWindows, distro, runner }) {
     return { available: false, detail: 'gapseq 仅支持 Windows WSL 的只读探测。' }
   }
   // 快速预检：先确认目标发行版存在（wsl.exe -l -q 亚秒级），避免发行版缺失时
-  // 白等一次 bash 长命令直到超时刹车（真实运行时实测：本机 bash 启动即 ~3s）。
+  // 白等一次 bash 长命令直到超时刹车（实测：bash 启动即 ~3s）。
   try {
     const listed = await runner('wsl.exe', ['-l', '-q'])
     const names = String(listed?.stdout ?? '')

@@ -178,7 +178,7 @@ def _export_csv(path, results, out):
     """纯数据 CSV（标准表头，机器可读）+ 旁车 meta。
 
     2026-10-05 修：此前把 assumption_note 写成首行 `"# assumption", note` 双字段行——
-    pandas/自动解析会把它当表头或脏行（E2E 实测 agent 需专门跳过 '#' 行）。
+    pandas/自动解析会把它当表头或脏行（实测 agent 需专门跳过 '#' 行）。
     现改为：CSV 保持纯表；说明与参数写入 <path>.meta.json（返回体 export_csv_meta）。
     """
     path = ensure_parent_dir(path)

@@ -17,7 +17,7 @@ Genome-scale metabolic model builder for dsh: genome in, validated SBML out.
 | Python | 3.10+，且装 **`cobra`** | 分析/验证/补洞/账本/基准/导出 —— 除 `gem_build` 外的 22 个工具 |
 | `pyrodigal` | 装在同一个 Python 环境（可选但建议） | 裸基因组自动注释兜底（`gem_annotate` / fna 输入） |
 | **CarveMe** | 独立 venv `~/.dsh/dsh-bio-gem/venv-carveme`，含 `carve.exe` + **`diamond.exe`** | `gem_build`（carveme 引擎） |
-| WSL2 + gapseq | 可选，按本机拓扑（见第 4 节） | `gem_build`（gapseq 引擎） |
+| WSL2 + gapseq | 可选，按 WSL2 环境拓扑（见第 4 节） | `gem_build`（gapseq 引擎） |
 
 > **Python 环境从哪来（v0.1.4 起）**：解释器探测顺序为
 > `GEM_PYTHON` → **宿主 `dsh-bio-genie` 的自举环境** → `CONDA_PREFIX` → `PATH` 中的 `python`，
@@ -38,7 +38,7 @@ npx -y @deepseek-ai/dsh plugin --profile web add @dsh-bio/dsh-bio-gem
 # 方式二：从 GitHub 安装（拉源码；本插件纯 ESM 无构建步骤，可直接加载）
 npx -y @deepseek-ai/dsh plugin --profile web add github:moonbowterfly/dsh-bio-gem
 
-# 方式三：从本地目录安装（开发调试）
+# 方式三：从本地目录安装（本地源码）
 npx -y @deepseek-ai/dsh plugin --profile web add ./dsh-bio-gem
 ```
 
@@ -53,10 +53,10 @@ npx -y @deepseek-ai/dsh plugin --profile web add ./dsh-bio-gem
 
 3. 重新打开桌面端生效（也可直接在桌面端内 **「插件」页**输入包名安装，无需退出应用）。
 
-- 本机若已全局安装 dsh CLI，把 `npx -y @deepseek-ai/dsh` 换成 `dsh` 即可。
+- 若已全局安装 dsh CLI，把 `npx -y @deepseek-ai/dsh` 换成 `dsh` 即可。
 - `--profile <name>` 是**必填选项**（不传报 `required option '--profile <name>' not specified`）；Web 端固定用 `web`，桌面端固定用 `desktop`。
 - 安装完**重启对应的 dsh**（web：重新双击启动入口；桌面端：重开应用）。
-- **引擎兼容**：0.1.x 侧经 dsh 0.1.5-rc.2 走廊逐卡走查与实机验证；**0.2.0+（含官方桌面端）已于 2026-10-01 实测**（工具全量注册 + `gem_media_resolve` 真实执行）。
+- **引擎兼容**：0.1.x 侧经 dsh 0.1.5-rc.2 完整兼容核验与实机验证；**0.2.0+（含官方桌面端）已于 2026-10-01 实测**（工具全量注册 + `gem_media_resolve` 真实执行）。
 - 版本刚发布时可能短时间拉不到：registry 首次分发有几分钟延迟，`pnpm` 还可能缓存住 404。遇到 `ERR_PNPM_FETCH_404 ... is not in the npm registry` 时等几分钟重试，或在命令末尾追加 `--registry https://registry.npmjs.org/` 绕过缓存。
 
 验证插件层已生效（不用启动服务）：
@@ -121,7 +121,7 @@ unzip -o diamond.zip diamond.exe -d "$HOME/.dsh/dsh-bio-gem/venv-carveme/Scripts
 
 ### 4.（可选）gapseq 引擎（WSL2）
 
-`gem_build` 的 `engine=gapseq` 走 WSL2 桥（`gem_gapseq` 原子四步：setup / launch / status / fetch），质量档耗时 30-60 分钟/模型，非必需——默认的 `engine=carveme` 已能出可验证模型。桥按本机拓扑实现（WSL2 + `/opt/miniforge3` conda 环境 `gapseq` + 本地序列库），换机器需改 `python/gapseq_wsl.py` 顶部常量，故目前**视为实验性可选能力**。没有 WSL2 不影响其余 22 个工具与 carveme 构建。
+`gem_build` 的 `engine=gapseq` 走 WSL2 桥（`gem_gapseq` 原子四步：setup / launch / status / fetch），质量档耗时 30-60 分钟/模型，非必需——默认的 `engine=carveme` 已能出可验证模型。桥按 WSL2 + conda 环境拓扑实现（默认路径见 `python/gapseq_wsl.py` 顶部常量，换机器需相应调整），故目前**视为实验性可选能力**。没有 WSL2 不影响其余 22 个工具与 carveme 构建。
 
 能力探针只读检查 `doall` 使用的环境内 `seq/Bacteria` 元数据和 `rev/rxn/unrev` 文件，不请求 Zenodo。检查路径与当前固定的 conda 环境路径一致。
 
@@ -129,7 +129,7 @@ unzip -o diamond.zip diamond.exe -d "$HOME/.dsh/dsh-bio-gem/venv-carveme/Scripts
 
 ```sh
 # 冒烟：不依赖 dsh，直测 Python 层 + 工具注册表
-# 断言锚定本机 C58 夹具路径（见 test/smoke.js 顶部常量），换机器先改路径
+# 断言锚定固定夹具路径（见 test/smoke.js 顶部常量），换机器先改路径
 GEM_PYTHON=<你的-cobra-python> node test/smoke.js --skip-build   # 跳过 ~70s 的 build 单测
 GEM_PYTHON=<你的-cobra-python> node test/smoke.js                # 含 build 单测
 # 托管领域扩展的只读 integration 协议（无需 dsh 实例）
@@ -212,7 +212,7 @@ CarveMe + diamond are required only by `gem_build`; the other 20 tools need noth
 | `gem_essentiality` | 全量必需基因扫描（FVA 预筛 + 手工敲除）| ✅ C58: 必需 155 |
 | `gem_annotate` | 基因组→蛋白（官方优先 + pyrodigal 兜底，纯 Windows）| ✅ pyrodigal 5330 |
 | `gem_build` | CarveMe/gapseq 双引擎构建（fna/faa；后台 job + 进度；M9 或目标介质验证闭环）| ✅ carveme 70s / fna 全链 63.5s / gapseq 实测中 |
-| `gem_gapseq` | gapseq 原子四步（WSL 可选：setup/launch/status/fetch）| ✅ 本机全通 |
+| `gem_gapseq` | gapseq 原子四步（WSL 可选：setup/launch/status/fetch）| ✅ 实测全通 |
 | `gem_media_resolve` | 跨引擎介质解析 RPC（自然名→EX ID；消费侧统一入口）| ✅ AB→20 EX |
 | `gem_fluxscan` | 通量区间制（FVA 区间+pFBA 点值；条件对比区间分离判定，overlap=伪影禁止引用）| ✅ C58 AB 0.519981 / 蔗糖 supplement 0.97077 |
 | `gem_sensitivity` | 结构性灵敏度（GAM×biomass 22 组合全量+稳定性三分类+单组分漂移+模型卡鲁棒性 v3）| ✅ C58 基准复现 155 |
@@ -226,7 +226,7 @@ CarveMe + diamond are required only by `gem_build`; the other 20 tools need noth
 | `gem_quality` | 模型质量报告（gem-qi-v1：blocked/环路(fastcc 方向锥)/元素平衡/孤儿与死端/覆盖/连通性 + 启发式聚合分；分项与 failed_checks 为准）| ✅ C58+AB: qi 67.23 / blocked 1032 / cyclic 289 |
 | `gem_sample` | 通量空间采样（ACHR 默认 / OptGP 大样本；growth_floor_fraction 受限空间；全空间 vs 受限边界声明）| ✅ C58+AB: 全空间 median 0.019 / floor-0.9 min 0.468 |
 
-架构/决策见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/DECISIONS-2026-08-29.md](docs/DECISIONS-2026-08-29.md)。
+架构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
 ## 开发速查
 

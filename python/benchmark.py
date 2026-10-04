@@ -125,7 +125,7 @@ def _essential_full_scan(model_path, medium, log, tag):
 
 def map_genes(genes, model_b):
     """基因映射尽力而为（与物种无关）：策略1 identity（同 id）；策略2 gene.name 匹配。
-    反应桥（EC/名字）需两侧注释充分；本机两命名空间注释层不足时不启用，如实报告。"""
+    反应桥（EC/名字）需两侧注释充分；两侧命名空间注释层不足时不启用，如实报告。"""
     b_by_id = {g.id for g in model_b.genes}
     b_by_name = {}
     for g in model_b.genes:
@@ -387,9 +387,9 @@ def write_md(path, out):
 def fetch_bigg_model(model_id, dest_dir=None):
     """从 BiGG 下载模型 SBML（B3 最小版）。
     URL 策略（实测 2026-08-30）：静态库 http://bigg.ucsd.edu/static/models/<id>.xml 返回标准 SBML；
-    任务书给的 /api/v2/universal/models/<id>/download 实为 404（universal 是 reactions 命名空间），
+    `/api/v2/universal/models/<id>/download` 实为 404（universal 是 reactions 命名空间），
     /api/v2/models/<id>/download 返回 200 但内容是 BiGG JSON（非 SBML）——两者均不采用。
-    直连失败走本机代理 127.0.0.1:27890；都失败抛错（调用方如实报告，不阻塞本地对比）。"""
+    直连失败走系统代理；都失败抛错（调用方如实报告，不阻塞本地对比）。"""
     import urllib.request
     import shutil
     urls = [f"http://bigg.ucsd.edu/static/models/{model_id}.xml"]

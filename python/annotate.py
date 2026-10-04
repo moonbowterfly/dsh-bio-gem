@@ -1,5 +1,5 @@
 # annotate.py — 路线 P0 注释步骤（纯 Windows）
-# 策略（GLM 二轮 Q1 采纳 + 验证协议）：官方注释优先 + pyrodigal 兜底
+# 策略（设计评审采纳 + 验证协议）：官方注释优先 + pyrodigal 兜底
 #   1) 同目录 *_protein.faa 存在（NCBI dataset 常见）→ 直接用
 #   2) 同目录 *.gff（含 CDS）→ 解析坐标从 fna 提取 + 翻译（transl_table 11）
 #   3) 仅 .fna → pyrodigal（多序列模式；总长 <100kb 时 meta 模式）

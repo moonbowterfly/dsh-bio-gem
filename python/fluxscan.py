@@ -1,5 +1,5 @@
 # fluxscan.py — M1 通量区间制（阶段 A 可信度内核第一件）
-# 语义（bsp 锁稿，一字不改）：每反应输出 fva_min/fva_max/pfba；条件对比消费区间分离判定；
+# 语义（已锁定）：每反应输出 fva_min/fva_max/pfba；条件对比消费区间分离判定；
 #   overlap = 点值差异是求解器伪影，禁止引用。
 # 计算口径：每 condition 独立 silent_read_sbml 重读模型（勿深拷贝）；介质 setup 对齐 validate G3
 #   （expand_medium -> 全交换清零 EX_/DM_/SK_/boundary -> resolve_medium 设 bounds）；
@@ -269,15 +269,15 @@ if __name__ == "__main__":
     # 双协议（历史坑：stdin 与 argv-file 两派并存，新脚本必须都支持）
     if "--selftest" in sys.argv:
         cases = [
-            # (la, ua, lb, ub, tol, direction, hard)  —— 任务书 5 组判定样例
+            # (la, ua, lb, ub, tol, direction, hard)  —— 5 组判定样例
             (1.0, 2.0, 5.0, 6.0, 1e-6, "b_higher", True),      # ① 分离：b 高
             (5.0, 6.0, 1.0, 2.0, 1e-6, "a_higher", True),      # ① 分离：a 高
             (1.0, 3.0, 2.0, 4.0, 1e-6, None, False),           # ② 重叠（伪影）
             (1.0, 3.0, 3.0, 5.0, 1e-6, None, False),           # ② 接触容差内仍 overlap（边界）
             (-5.0, -2.0, 0.0, 0.0, 1e-6, "b_higher", True),    # ③ 零通量/负向
             (-5.0, -2.0, 0.0, 0.0, 0.0, "b_higher", True),     # ④ 精确边界（tol=0）
-            # ⑤ 容差：锁定公式下 gap=5e-7 < tol=1e-6 -> overlap（任务书该行样例期望"分离"，
-            #    与锁定公式 ua+tol<lb 矛盾：5e-7 不大于 1e-6。按公式实现，差异上报 bsp 裁决）
+            # ⑤ 容差：锁定公式下 gap=5e-7 < tol=1e-6 -> overlap（该样例期望"分离"，
+            #    与锁定公式 ua+tol<lb 矛盾：5e-7 不大于 1e-6。按公式实现）
             (1.0, 1.0000005, 1.000001, 2.0, 1e-6, None, False),
             # 同数字、tol(1e-7)<gap(5e-7) -> 分离：证明容差机制本身生效
             (1.0, 1.0000005, 1.000001, 2.0, 1e-7, "b_higher", True),

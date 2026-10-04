@@ -4,7 +4,7 @@
 # 纪律: 各工具完成后**仅当产物模型旁已有 card** 才向后追加；无卡不动（不凭空造卡）。
 # 兼容: build.py 旧卡（无 schema 字段）读取时即时迁移到 v2（新增字段缺失不报错）。
 # units: growth_rate 一律 1/h（比生长速率；biomass 反应 gDW 归一化口径，数值 = μ）。
-# 2026-09-21 由 mmol/gDW/h 演进为 1/h：数值不变、生物语义更准（外部评审 P0；schema 向后兼容，旧卡照读）。
+# 2026-09-21 由 mmol/gDW/h 演进为 1/h：数值不变、生物语义更准（schema 向后兼容，旧卡照读）。
 import os
 import json
 import time

@@ -6,7 +6,7 @@
  *      每个会话操作自己的工作区，而不是服务器启动目录）
  *   2. 保底工作区 `~/.dsh/sessions/default`（自动创建）
  *
- * 背景（2026-10-04 E2E 实测）：python 子进程此前固定 cwd=插件 python 目录，
+ * 背景（2026-10-04 实测）：python 子进程此前固定 cwd=插件 python 目录，
  * 工具参数里的相对路径（如 gem_fluxscan 的 export_csv）因此解析到插件目录、
  * 写入失败（agent 被迫改用绝对路径自愈）。本模块对齐 dsh-bio-genie 的
  * workdir 语义：相对路径基于会话工作区解析。

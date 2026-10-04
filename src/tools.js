@@ -42,7 +42,7 @@ function buildTool() {
       '从细菌全基因组构建基因组尺度代谢模型（GEM）。' +
       'engine=carveme（默认，纯 Windows 快）：输入蛋白 FASTA（*.faa），CarveMe -g M9 gapfill → M9 介质验证 → 目标介质 L1/L2 补洞，' +
       '约 1-2 分钟（C58 实测 70s）。' +
-      'engine=gapseq（质量档，需本机 WSL2 gapseq 环境）：输入核苷酸 FASTA（*.fna），WSL 桥 gapseq doall → 模型拷回 → 目标介质验证，' +
+      'engine=gapseq（质量档，需 WSL2 gapseq 环境）：输入核苷酸 FASTA（*.fna），WSL 桥 gapseq doall → 模型拷回 → 目标介质验证，' +
       '约 30-60 分钟（后台进度日志旁观，不要误判超时）。' +
       '输出标准 SBML（fbc v2）+ 模型卡（sidecar JSON：引擎版本/验证结果/补洞记录）。' +
       '生长值为比生长速率口径（1/h，biomass 归一化）；通量为单点 FBA 值（mmol/gDW/h，非硬结论）。条件间通量对比用 gem_fluxscan（区间制）。' +
@@ -417,7 +417,7 @@ export function registerTools(ctx) {
     name: 'gem_benchmark',
     description:
       '通用基准对比（benchmark）：任何两个代谢模型跑规范对比表，产出论文级对比。model_a/model_b 支持本地 SBML 绝对路径' +
-      '或 "bigg:<model_id>" URI（如 bigg:iML1515，BiGG 静态库下载到 ~/.dsh/dsh-bio-gem/models/，直连失败自动走本机代理，下载后缓存）。' +
+      '或 "bigg:<model_id>" URI（如 bigg:iML1515，BiGG 静态库下载到 ~/.dsh/dsh-bio-gem/models/，直连失败自动走系统代理，下载后缓存）。' +
       '输出：ID 体系探测 / 六道关卡 G1-G6 逐项并列 / 声明介质生长（含介质层两级策略——无 EX_ 层的模型自动回退 ' +
       'boundary 单代谢物反应解析，boundary_style 标注）/ biomass 可行性探针（逐组分净产测试，结构性断供清单）/ ' +
       '必需性对比（复用 essential_scan；任一侧 wt<=EPS 判退化只报结构信息不做垃圾对比，基因映射尽力而为如实报覆盖率，' +

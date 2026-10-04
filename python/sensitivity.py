@@ -217,7 +217,7 @@ def sensitivity(model_path, medium=None, biomass_scales=None, gam_grid=None,
                 run_component_sensitivity=True, run_drift=True, top_n=10,
                 export_csv=None, progress=None, baseline_check=None):
     """M2 主入口。baseline_check: 可选外部基线必需集（来自 essential_scan 直跑）——
-    基准组合与其做集合相等断言（任务书锚点）。返回完整结果 dict。"""
+    基准组合与其做集合相等断言（基准锚点）。返回完整结果 dict。"""
     log = progress or (lambda s: sys.stderr.write(str(s) + "\n"))
     biomass_scales = biomass_scales or BIOMASS_SCALES
     gam_grid = gam_grid or GAM_GRID

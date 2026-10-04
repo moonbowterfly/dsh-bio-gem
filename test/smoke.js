@@ -68,7 +68,7 @@ const ASSET_HINT = explicitRoot
 
 // 默认账本（一个模型一个账本：~/.dsh/dsh-bio-gem/ledger/<模型文件名>.jsonl，命名规则与
 // python/ledger.py 的 model_ledger_path 同步）——账本缺失/为空时，enrichment 的基因输入
-// 与 targets 的数据源为空（2026-09-10 dsh 重建后本机曾缺失，已从 gem-verify 快照恢复）。
+// 与 targets 的数据源为空（2026-09-10 重建后曾缺失，已从快照恢复）。
 // 缺账本 → 相关检查 SKIP（新环境/CI 不误报为回归失败）。
 const LEDGER_DIR = join(homedir(), '.dsh', 'dsh-bio-gem', 'ledger')
 function ledgerReady(modelPath) {

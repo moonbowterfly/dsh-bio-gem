@@ -1,6 +1,6 @@
 # roundtrip_check.py — SBML 往返保真自检（Q2 工程质量件 A）
 # cobra 读 → write_sbml_model → 读回：断言反应/代谢物/基因数一致 + GPR 字符串精确一致
-# （GLM 经典暗坑：序列化静默丢 GPR——fbc v2 写入路径回归护栏；≥5 个复合 GPR 反应样本必查）
+# （经典暗坑：序列化静默丢 GPR——fbc v2 写入路径回归护栏；≥5 个复合 GPR 反应样本必查）
 import os
 import sys
 import json

@@ -4,22 +4,22 @@
 
 dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质粒/多染色体），自动构建→验证→补洞→出报告（标准 SBML + 模型卡），产出后可被 dsh-bio-genie 现有消费工具（FBA/必需性/生产包络线/模型面板）直接加载使用。
 
-硬性原则（沿袭 bio-genie）：**用户零手动安装、零自愈、通用化（不可本机特化）、结论可溯源**。
+硬性原则（沿袭 bio-genie）：**用户零手动安装、零自愈、通用化（不针对特定机器特化）、结论可溯源**。
 
 ## 2. 决策记录（为什么这么设计）
 
 | 日期 | 决策 | 依据 |
 |---|---|---|
 | 08-28 | 插件名 dsh-bio-gem；资产盘点：消费侧已就绪、补构建侧闭环 | 用户拍板 |
-| 08-29 | 引擎路线：**任务门槛路由**（不是简单 auto）；落地节奏 **M1 CarveMe+补洞 → M2 gapseq WSL 桥 → M3 双引擎交叉** | 第三方 GLM 独立评估 + 本机实测（CarveMe AB 不生长=补洞是生存线；WSL 桥显著降级交付风险；Docker 非 WSL 替代）|
+| 08-29 | 引擎路线：**任务门槛路由**（不是简单 auto）；落地节奏 **M1 CarveMe+补洞 → M2 gapseq WSL 桥 → M3 双引擎交叉** | 独立设计评估 + 实测（CarveMe AB 不生长=补洞是生存线；WSL 桥显著降级交付风险；Docker 非 WSL 替代）|
 | 08-29 | MVP 工具集：gem_build / gem_validate（G1G2G3 必做，G4 条件、G5 抽检）/ gem_gapfind（L1L2L3）/ gem_gapfill（L1L2 规则自动）/ gem_report（薄版模型卡）；**gem_essentiality 不进首版** | 消费侧 bio_gene_knockout 已存在，避免重复实现 |
-| 08-29 | 修正 GLM 建议：弃 μ 判据用 FBA 通量判据；pyrodigal 注释前端降 backlog；测试矩阵首版收敛 C58+2 公开株 | 本机输出口径为 objective_value；默认输入是带注释基因组 |
+| 08-29 | 修正建议：弃 μ 判据用 FBA 通量判据；pyrodigal 注释前端降 backlog；测试矩阵首版收敛 C58+2 公开株 | 输出口径为 objective_value；默认输入是带注释基因组 |
 
-**裁决原则**：GLM 分析质量高但缺本机上下文（输出单位、输入形态、部署面=本机为主的现实），凡冲突处以本机实测与产品原则为准。
+**采纳原则**：外部分析缺实际环境上下文时，凡冲突处以实测与产品原则为准。
 
 ## 3. 工具契约（21 工具 ↔ Python 层；21 op + build CLI）
 
-| 工具 | Python 层 | 阶段 |
+| 工具 | Python 层 | 状态 |
 |---|---|---|
 | gem_build | build.py CLI（CarveMe M9 gapfill；fna 自动注释）| ✅ M1+模块 DONE（C58 63-70s）|
 | gem_validate | op validate（G1-G6 + GATE_REGISTRY）| ✅ M1 DONE |
@@ -33,15 +33,15 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 | gem_report | op model_info（+ ledger_summary 基率摘要）| ✅ DONE |
 | gem_media_resolve | op media_resolve（介质解析 RPC，消费侧统一入口）| ✅ DONE |
 | gem_biomass | op biomass_inspect / biomass_apply（inspect 组分+对照参考；apply 覆盖表+三联对照+原文件不动回滚）| ✅ Q2 DONE（复位 delta 0.0）|
-| gem_fluxscan | op fluxscan（通量区间制：FVA 区间+pFBA 点值+条件对区间分离判定，overlap=伪影禁止引用）| ✅ 阶段A-M1 DONE（C58 AB 0.519981 / 蔗糖 supplement 0.97077）|
-| gem_sensitivity | op sensitivity（GAM×biomass 22 组合全量+稳定性三分类+单组分漂移；模型卡 robustness v3）| ✅ 阶段A-M2 DONE（基准复现 155）|
-| gem_ledger | op ledger（prediction ledger：list/query/update；幂等追加式账本）| ✅ 阶段A-M3 DONE（C58 155+19 条幂等复跑）|
-| gem_benchmark | op benchmark（通用基准对比：六关并列/生长[介质层两级策略]/biomass 探针/必需性对比含退化护栏/表型/账本回填/md 落盘；model 参数支持 bigg:&lt;id&gt; 下载）| ✅ 阶段B-B1/B2/B3 DONE |
-| gem_secretion | op secretion（可分泌谱：production envelope；边界声明内置；wt<=EPS 退化护栏不登记）| ✅ 阶段C-C1 DONE（C58 85 可分泌）|
-| gem_double_knockout | op double_knockout（双敲 v1：GPR 穷尽先验+全扫 max_pairs 预算；假设声明内置）| ✅ 阶段C-C2 DONE（Atu3364↔Atu4682 对应命中）|
-| gem_enrichment | op enrichment（必需基因通路富集：超几何+BH FDR；无注释 annotation_unavailable 兜底）| ✅ 阶段C-C3 DONE（C58 55 条 FDR 显著）|
-| gem_targets | op targets（靶点规范导出：11 字段锁定 schema；账本计数闭合；引物设计不做）| ✅ 阶段C-C4 DONE（258 行三类闭合）|
-| gem_precursor_scan | op precursor_scan（阻塞前体分析：基线通量→可生长即返「无阻塞」；不生长则逐前体移除测试定位阻塞点）| ✅ 2026-09-11（E2E 绕道归因产出）|
+| gem_fluxscan | op fluxscan（通量区间制：FVA 区间+pFBA 点值+条件对区间分离判定，overlap=伪影禁止引用）| ✅ 已完成（C58 AB 0.519981 / 蔗糖 supplement 0.97077）|
+| gem_sensitivity | op sensitivity（GAM×biomass 22 组合全量+稳定性三分类+单组分漂移；模型卡 robustness v3）| ✅ 已完成（基准复现 155）|
+| gem_ledger | op ledger（prediction ledger：list/query/update；幂等追加式账本）| ✅ 已完成（C58 155+19 条幂等复跑）|
+| gem_benchmark | op benchmark（通用基准对比：六关并列/生长[介质层两级策略]/biomass 探针/必需性对比含退化护栏/表型/账本回填/md 落盘；model 参数支持 bigg:&lt;id&gt; 下载）| ✅ 已完成 |
+| gem_secretion | op secretion（可分泌谱：production envelope；边界声明内置；wt<=EPS 退化护栏不登记）| ✅ 已完成（C58 85 可分泌）|
+| gem_double_knockout | op double_knockout（双敲 v1：GPR 穷尽先验+全扫 max_pairs 预算；假设声明内置）| ✅ 已完成（Atu3364↔Atu4682 对应命中）|
+| gem_enrichment | op enrichment（必需基因通路富集：超几何+BH FDR；无注释 annotation_unavailable 兜底）| ✅ 已完成（C58 55 条 FDR 显著）|
+| gem_targets | op targets（靶点规范导出：11 字段锁定 schema；账本计数闭合；引物设计不做）| ✅ 已完成（258 行三类闭合）|
+| gem_precursor_scan | op precursor_scan（阻塞前体分析：基线通量→可生长即返「无阻塞」；不生长则逐前体移除测试定位阻塞点）| ✅ 2026-09-11（实测归因产出）|
 
 > Python 分发器 `gem_ops.py` 共 **23 个 op**（annotate/benchmark/biomass_apply/biomass_inspect/double_knockout/enrichment/essential_scan/fluxscan/gapfill/gapfind/gapseq/l3_fix/ledger/media_resolve/model_info/phenotype_fix/precursor_scan/quality/sample/secretion/sensitivity/targets/validate）；`gem_build` 不经分发器，由 `build.py` CLI 直接调用（长任务，jobs.js 拉起）。
 >
@@ -49,7 +49,7 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 
 > **precursor_scan 的判据取舍（勿回退）**：初版曾用「全开交换下逐前体 demand 能否净生产」的**绝对可达性**判据，在教科书模型 e_coli_core 上把 atp_c/accoa_c/nad_c/nadph_c 误报为「结构缺失」（辅因子有循环补给路径，稳态下不净生产 ≠ 网络不能供给），故否决。现行判据为**相对判断**：先测基线通量，可生长即直接返回「无阻塞」；不生长才逐前体做移除测试，由「移除后是否恢复通量」直接定义阻塞点。验证锚：toy 单点阻塞模型（精确命中）、e_coli_core（growable，零误报）、iNX1344_v3（infeasible_or_constrained，与 agent 手工探索结论一致）。
 
-> 其余工具层约定：附模型卡统一写入 `python/model_card.py`（lineage/verified_phenotypes/essential_genes/robustness v3）与往返保真自检 `python/roundtrip_check.py`；预测账本 `python/ledger.py`（一个模型一个账本：`~/.dsh/dsh-bio-gem/ledger/<模型名>.jsonl`，按模型 basename 分，显式 ledger_path 可覆盖；无参查询=聚合全局视图；旧全局 predictions.jsonl 已迁移为 legacy）。**生长/通量数值口径（阶段A-M4）**：所有产出生长/通量数值的工具输出均带 `units: mmol/gDW/h` 与单点 FBA 声明；条件间通量对比一律走 gem_fluxscan 区间分离判定（overlap=伪影禁止引用）。
+> 其余工具层约定：附模型卡统一写入 `python/model_card.py`（lineage/verified_phenotypes/essential_genes/robustness v3）与往返保真自检 `python/roundtrip_check.py`；预测账本 `python/ledger.py`（一个模型一个账本：`~/.dsh/dsh-bio-gem/ledger/<模型名>.jsonl`，按模型 basename 分，显式 ledger_path 可覆盖；无参查询=聚合全局视图；旧全局 predictions.jsonl 已迁移为 legacy）。**生长/通量数值口径**：所有产出生长/通量数值的工具输出均带 `units: mmol/gDW/h` 与单点 FBA 声明；条件间通量对比一律走 gem_fluxscan 区间分离判定（overlap=伪影禁止引用）。
 
 ## 4. 引擎路线（M1→M2→M3）
 
@@ -69,7 +69,7 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 | G5 | 必需基因抽检（≤30 基因）| 条件 | 有参照集才跑；映射覆盖 <80% 时 SKIP(WARN) |
 | G6 | ATP 泄漏检测（全关交换后 ATP demand 应≈0）| ✅ | leak ≤0.01 判 PASS；ATP 解析走 id→name→formula 三级回退（跨 ID 体系）|
 
-**G0 的由来（2026-09-10 E2E 实测）**：MetaCyc 风格 id 的公开模型（iNX1344_v3）上，
+**G0 的由来（2026-09-10 实测）**：MetaCyc 风格 id 的公开模型（iNX1344_v3）上，
 `gem_gapfind` 报 5 个 L3「内部通路缺口」，实为 biomass 前体未映射所致——agent 为逐个
 证伪手写 cobra 代码 18 次。现 `gem_validate` 在 G1 之前输出 `g0`，`gem_gapfind` 返回
 `coherence_warning` + `interpretation_guard`，把该结论前置给 agent。
@@ -126,7 +126,7 @@ job 化 + 进度事件（粒度 ≤5s）+ 分步 checkpoint（每步落盘，可
 
 零手动干预下：**基因组进 → 四个消费工具（FBA/必需性/包络线/面板）不经修改即可用的 SBML 出**，且模型在声明培养基上生长为正；C58 端到端演示通过（build→面板可见→FBA 可跑→必需性可跑）；模型卡齐全（引擎/版本/补洞记录/验证结果，同输入重跑一致）；5-6 Mb 基因组 p95 ≤ 20 min。
 
-## 附录 A：性能基准（阶段 A-M6，2026-08-30 本机实测，独占运行）
+## 附录 A：性能基准（2026-08-30 实测，独占运行）
 
 分析 Python 3.13.13 / cobra 0.32.1 / GLPK；C58=gapseq 2485 反应/1084 基因；iNX1344_v4=1441 反应/1344 基因。
 
@@ -142,4 +142,4 @@ job 化 + 进度事件（粒度 ≤5s）+ 分步 checkpoint（每步落盘，可
 | 单组分 ±25% 灵敏度 | 75 组分×2=150 次 FBA，54.4s | 47 组分×2=94 次 FBA，7.9s |
 | 必需性漂移 top10（含生长探针） | 522.0s（含 7 刚性对跳过探针） | 33.8s（20/20 全部"不生长跳过"） |
 
-> 注：FVA 占单条件耗时 ~75%；sensitivity 线性于组合数（每组合 fresh 读模+FVA+敲除循环）。GLPK 对个别扰动 LP 有病态停摆前科，sensitivity 内置 LP_TIMEOUT_S=30 护栏（见 docs/DECISIONS-阶段A.md M2-5）。
+> 注：FVA 占单条件耗时 ~75%；sensitivity 线性于组合数（每组合 fresh 读模+FVA+敲除循环）。GLPK 对个别扰动 LP 有病态停摆前科，sensitivity 内置 LP_TIMEOUT_S=30 护栏。

@@ -1,6 +1,6 @@
 // dsh-bio-gem — capabilities 单源（single source of truth for tool manifest & capability metadata）
 //
-// 目的（外部评审共识，2026-09-21 裁决 §3.3）：
+// 目的（2026-09-21 设计共识）：
 //   1. 工具清单/能力分级/成本与副作用元数据集中一处，供 integration API（/v1/capabilities）
 //      与 genie 宿主侧动态消费——消灭「工具数变化需同步 ≥12 处」的手工漂移。
 //   2. 校验脚本 scripts/check-capabilities.mjs 强制本 MANIFEST 与 tools.js 真实注册集合一致；

@@ -10,7 +10,7 @@ import os from 'node:os'
 const PYTHON_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'python')
 
 /**
- * 候选解释器，按优先级（**通用化，不写死任何本机路径**）：
+ * 候选解释器，按优先级（**通用化，不写死任何机器特定路径**）：
  *
  *   1. `GEM_PYTHON`            — 用户显式指定，最高优先级
  *   2. 宿主插件自举环境         — `$DSH_HOME/dsh-bio-genie/python-env`

@@ -4,7 +4,7 @@
 且父目录不存在时，直接 FileNotFoundError ——对用户是零价值的报错（需手动 mkdir）。
 统一改为自动创建父目录（mkdir -p 语义），返回绝对路径。
 - 部分导出曾把声明文本写成 CSV 首行 `"# xxx", note` 双字段行——标准 CSV 解析器
-  （pandas 默认）会把它当表头或脏行（E2E 实测 agent 需专门跳过 '#' 行）。
+  （pandas 默认）会把它当表头或脏行（实测 agent 需专门跳过 '#' 行）。
   统一改为：CSV 保持纯数据表，声明与参数写入旁车文件 <path>.meta.json。
 """
 from __future__ import annotations

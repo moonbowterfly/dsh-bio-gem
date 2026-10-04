@@ -7,7 +7,7 @@
 # 幂等: 同 model+condition+type+content 哈希去重，重复运行不追加。
 # 完整性: 逐行 JSON 解析校验，损坏行跳过并在返回里报 corrupt_rows + 行号（不阻塞）；
 #         写入失败只 WARN 不使主流程失败。update 重写文件但保留损坏行原样（不删行）。
-# 证据分级优先级（任务书锁定）: EVIDENCE_literature > EVIDENCE_sequence > EVIDENCE_rule > EVIDENCE_math
+# 证据分级优先级（口径锁定）: EVIDENCE_literature > EVIDENCE_sequence > EVIDENCE_rule > EVIDENCE_math
 import os
 import re
 import sys
@@ -29,7 +29,7 @@ def _now_iso():
 
 
 def _content_hash(model, condition, rtype, content):
-    # 阶段D-E2E P1：Windows 路径斜杠/大小写差异（"F:/a" vs "F:\a"）会使同一模型的
+    # 实测发现：Windows 路径斜杠/大小写差异（"F:/a" vs "F:\a"）会使同一模型的
     # 重复登记漏过去重——hash 前做 normcase+normpath 归一化（首登记的存储格式不变）。
     m = os.path.normcase(os.path.normpath(model)) if model else ""
     raw = "\x1f".join([m, condition or "", rtype or "", content or ""])
