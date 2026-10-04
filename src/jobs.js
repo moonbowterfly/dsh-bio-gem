@@ -84,7 +84,7 @@ export function readProgress(jobId) {
   }
 }
 
-// 阶段D-P2：失败透明化——job 目录内容摘要 + stderr 尾部（成功路径不计算不返回）
+// 失败透明化——job 目录内容摘要 + stderr 尾部（成功路径不计算不返回）
 function jobDetail(jobDir) {
   let files = []
   try {

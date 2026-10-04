@@ -356,7 +356,7 @@ async function main() {
   check('gem_ledger: op query（更新后可过滤）',
     ledQuery?.ok === true && ledQuery?.result?.matched === 1, JSON.stringify(ledQuery?.result?.matched))
 
-  // 11) 阶段A遗留修正：退化护栏（wt<=EPS 必需性判定恒真 -> 不登记 ledger）
+  // 11) 退化护栏（wt<=EPS 必需性判定恒真 -> 不登记 ledger）
   if (HAS_INX4) {
     const tmpDegDir = mkdtempSync(join(tmpdir(), 'gem-smoke-deg-'))
     const tmpDegLedger = join(tmpDegDir, 'predictions.jsonl')
@@ -371,7 +371,7 @@ async function main() {
     skip('退化护栏（essential_scan v4）', 'iNX1344_v4.xml 未找到')
   }
 
-  // 12) 阶段B-B1：介质两级策略（C58 零影响 + v4 boundary 回退）+ gem_benchmark 自检用例
+  // 12) 介质两级策略（C58 零影响 + v4 boundary 回退）+ gem_benchmark 自检用例
   if (HAS_MAIN) {
     const mrC58 = await runPy('gem_ops.py', { op: 'media_resolve', args: { model: C58, medium: { medium_name: 'AB' } } })
     check('介质两级策略: C58 boundary_style=false（零影响硬保证）且 20 EX/0 unresolved',
@@ -421,7 +421,7 @@ async function main() {
   check('benchmark: op 协议（model_a 不存在明确报错）',
     benchProto?.ok === false && /model_a file not found/.test(benchProto?.error || ''), JSON.stringify(benchProto))
 
-  // 13) 阶段C-C1：gem_secretion 可分泌谱（真实小用例 C58 ~23s + 退化护栏 + op 协议）
+  // 13) gem_secretion 可分泌谱（真实小用例 C58 ~23s + 退化护栏 + op 协议）
   const secProto = await runPy('gem_ops.py', { op: 'secretion', args: {} })
   check('secretion: op 协议（缺 model 明确报错）',
     secProto?.ok === false && /model file not found/.test(secProto?.error || ''), JSON.stringify(secProto))
@@ -470,7 +470,7 @@ async function main() {
     skip('secretion: 退化护栏（v4）', 'iNX1344_v4.xml 未找到')
   }
 
-  // 14) 阶段C-C2：gem_double_knockout 双敲（op 协议 + 退化护栏 + 预算语义；真实锚点 Atu3364-Atu4682
+  // 14) gem_double_knockout 双敲（op 协议 + 退化护栏 + 预算语义；真实锚点 Atu3364-Atu4682
   //     模型内对应 NC_003063_2_1618/352 见 phaseC 报告，smoke 不重跑全量 4min）
   const dkProto = await runPy('gem_ops.py', { op: 'double_knockout', args: {} })
   check('double_knockout: op 协议（缺 model 明确报错）',
@@ -497,7 +497,7 @@ async function main() {
       JSON.stringify(dkProbe))
   }
 
-  // 15) 阶段C-C3：gem_enrichment 通路富集（真实 C58 ~3s + 无注释兜底）
+  // 15) gem_enrichment 通路富集（真实 C58 ~3s + 无注释兜底）
   if (HAS_MAIN && ledgerReady(C58)) {
     const enr = await runPy('gem_ops.py', {
       op: 'enrichment', args: { model: C58, export_csv: join(tmpSecDir, 'enr-nested', 'enr.csv') },
@@ -525,7 +525,7 @@ async function main() {
     skip('enrichment: 无注释兜底（iML1515）', `本地模型不存在（${imlPath}）`)
   }
 
-  // 16) 阶段C-C4：gem_targets 靶点规范导出（真实账本三类闭合 + schema）
+  // 16) gem_targets 靶点规范导出（真实账本三类闭合 + schema）
   if (HAS_MAIN && ledgerReady(C58)) {
     const tgt = await runPy('gem_ops.py', {
       op: 'targets',

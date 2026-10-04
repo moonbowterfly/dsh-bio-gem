@@ -1,4 +1,4 @@
-// dsh-bio-gem — 工具层（defineTool 注册，23 语义化工具，2026-08-30 阶段C-C4 起）
+// dsh-bio-gem — 工具层（defineTool 注册，23 语义化工具）
 // 全部执行走 python/gem_ops.py（JSON stdin 协议）或 build.py CLI（gem_build 长任务）。
 // op 与工具对照：23 op + gem_build（build CLI 直调）；详见 docs/ARCHITECTURE.md §3。
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -324,7 +324,7 @@ export function registerTools(ctx) {
     },
   })))
 
-  // gem_fluxscan：通量区间制（阶段A-M1：FVA 区间 + pFBA 点值 + 条件对区间分离判定）
+  // gem_fluxscan：通量区间制（FVA 区间 + pFBA 点值 + 条件对区间分离判定）
   disposers.push(ctx.tools.register(gemTool({
     name: 'gem_fluxscan',
     description:
@@ -353,7 +353,7 @@ export function registerTools(ctx) {
     timeoutMs: 900_000,
   })))
 
-  // gem_sensitivity：结构性灵敏度（阶段A-M2：GAM×biomass 网格 22 组合 + 稳定性三分类 + 单组分漂移）
+  // gem_sensitivity：结构性灵敏度（GAM×biomass 网格 22 组合 + 稳定性三分类 + 单组分漂移）
   disposers.push(ctx.tools.register(gemTool({
     name: 'gem_sensitivity',
     description:
@@ -381,7 +381,7 @@ export function registerTools(ctx) {
     timeoutMs: 3_600_000,
   })))
 
-  // gem_ledger：prediction ledger 预测账本（阶段A-M3：gem_essentiality/gem_phenotype 自动登记的预测可查询/更新/追踪）
+  // gem_ledger：prediction ledger 预测账本（gem_essentiality/gem_phenotype 自动登记的预测可查询/更新/追踪）
   disposers.push(ctx.tools.register(gemTool({
     name: 'gem_ledger',
     description:
@@ -412,7 +412,7 @@ export function registerTools(ctx) {
     timeoutMs: 60_000,
   })))
 
-  // gem_benchmark：通用基准对比（阶段B-B1：任何两个 GEM 的规范对比表，六关并列+生长+biomass 探针+必需性+表型+账本回填）
+  // gem_benchmark：通用基准对比（任何两个 GEM 的规范对比表，六关并列+生长+biomass 探针+必需性+表型+账本回填）
   disposers.push(ctx.tools.register(gemTool({
     name: 'gem_benchmark',
     description:
@@ -440,7 +440,7 @@ export function registerTools(ctx) {
     timeoutMs: 1_200_000,
   })))
 
-  // gem_secretion：可分泌代谢物谱（阶段C-C1：production envelope 扫描，纯拓扑边界声明内置）
+  // gem_secretion：可分泌代谢物谱（production envelope 扫描，纯拓扑边界声明内置）
   disposers.push(ctx.tools.register(gemTool({
     name: 'gem_secretion',
     description:
@@ -467,7 +467,7 @@ export function registerTools(ctx) {
     timeoutMs: 900_000,
   })))
 
-  // gem_double_knockout：双敲 v1 合成致死（阶段C-C2：GPR 穷尽先验 + FVA 预筛全扫，假设声明内置）
+  // gem_double_knockout：双敲 v1 合成致死（GPR 穷尽先验 + FVA 预筛全扫，假设声明内置）
   disposers.push(ctx.tools.register(gemTool({
     name: 'gem_double_knockout',
     description:
@@ -491,7 +491,7 @@ export function registerTools(ctx) {
     timeoutMs: 1_200_000,
   })))
 
-  // gem_enrichment：必需基因通路富集（阶段C-C3：超几何+BH FDR；通路源=SBML groups[MetaCyc PWY]）
+  // gem_enrichment：必需基因通路富集（超几何+BH FDR；通路源=SBML groups[MetaCyc PWY]）
   disposers.push(ctx.tools.register(gemTool({
     name: 'gem_enrichment',
     description:
@@ -512,7 +512,7 @@ export function registerTools(ctx) {
     timeoutMs: 300_000,
   })))
 
-  // gem_targets：靶点清单规范导出（阶段C-C4：账本三类预测 -> 锁定 schema，供下游引物/编辑工具直接输入）
+  // gem_targets：靶点清单规范导出（账本三类预测 -> 锁定 schema，供下游引物/编辑工具直接输入）
   disposers.push(ctx.tools.register(gemTool({
     name: 'gem_targets',
     description:

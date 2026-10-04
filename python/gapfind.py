@@ -133,7 +133,7 @@ def build_met_index(m, compartment="c0"):
 
 def build_ex_index(m):
     """EX 交换名索引（去 -e0 后缀小写）-> EX 反应 id。
-    两级策略（阶段B）：
+    两级策略：
       ① EX_/DM_/SK_ 前缀优先——现有行为逐字保留（仅 EX_ 前缀反应入索引）；
       ② 仅当模型 EX_ 索引整体为空（全模型无 EX_ 前缀交换反应）时，回退用 boundary
          单代谢物反应（恰好 1 个代谢物且 rxn.boundary=True）作为交换候选，返回
@@ -150,7 +150,7 @@ def build_ex_index(m):
                     idx.setdefault(norm(nm), r.id)
     if idx:
         return idx
-    # 阶段B 两级策略②：EX_ 层整体缺失 -> boundary 单代谢物反应回退
+    # 两级策略②：EX_ 层整体缺失 -> boundary 单代谢物反应回退
     bidx = BoundaryExIndex()
     for r in m.reactions:
         if r.boundary and len(r.metabolites) == 1:
@@ -170,7 +170,7 @@ def match_ex(sub, ex_idx, allow_substring=None):
       - 短 key（<=4 且不含 '+'）：只允许前缀匹配（n.startswith(key)）
       - 含 '+' 的 key（金属离子）：允许前缀或后缀（iron(fe3+)→ironfe3+ endswith fe3+）
       - 长 key（>=5）：允许子串
-    阶段B：受控子串层可对单个索引禁用——boundary 回退索引（BoundaryExIndex）跨命名空间
+    受控子串层可对单个索引禁用——boundary 回退索引（BoundaryExIndex）跨命名空间
     短名易误配（实测 'd-glucose' ⊂ 'd-glucose1-phosphate' 会把 G1P 交换错当葡萄糖），
     故其 allow_substring=False；普通 dict 索引默认 True，既有行为逐字保留。"""
     key = norm(sub)
@@ -209,7 +209,7 @@ def match_ex(sub, ex_idx, allow_substring=None):
 
 
 class BoundaryExIndex(dict):
-    """两级策略②的 boundary 回退索引（阶段B）。
+    """两级策略②的 boundary 回退索引。
     仅当全模型无 EX_ 前缀交换反应时由 build_ex_index 产出；禁用受控子串回退层
     （跨命名空间误配实证：d-glucose ⊂ d-glucose1-phosphate）。"""
     allow_substring = False

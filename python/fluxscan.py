@@ -1,4 +1,4 @@
-# fluxscan.py — M1 通量区间制（阶段 A 可信度内核第一件）
+# fluxscan.py — 通量区间制（FVA 区间 + pFBA 点值 + 条件对区间分离判定）
 # 语义（已锁定）：每反应输出 fva_min/fva_max/pfba；条件对比消费区间分离判定；
 #   overlap = 点值差异是求解器伪影，禁止引用。
 # 计算口径：每 condition 独立 silent_read_sbml 重读模型（勿深拷贝）；介质 setup 对齐 validate G3
