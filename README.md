@@ -123,6 +123,8 @@ unzip -o diamond.zip diamond.exe -d "$HOME/.dsh/dsh-bio-gem/venv-carveme/Scripts
 
 `gem_build` 的 `engine=gapseq` 走 WSL2 桥（`gem_gapseq` 原子四步：setup / launch / status / fetch），质量档耗时 30-60 分钟/模型，非必需——默认的 `engine=carveme` 已能出可验证模型。桥按本机拓扑实现（WSL2 + `/opt/miniforge3` conda 环境 `gapseq` + 本地序列库），换机器需改 `python/gapseq_wsl.py` 顶部常量，故目前**视为实验性可选能力**。没有 WSL2 不影响其余 22 个工具与 carveme 构建。
 
+能力探针只读检查 `doall` 使用的环境内 `seq/Bacteria` 元数据和 `rev/rxn/unrev` 文件，不请求 Zenodo。检查路径与当前固定的 conda 环境路径一致。
+
 ### 5. 自检（仓库源码目录内）
 
 ```sh

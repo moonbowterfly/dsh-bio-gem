@@ -25,6 +25,7 @@ WSL_DISTRO = os.environ.get("GEM_GAPSEQ_DISTRO", "Ubuntu-22.04")
 CONDA_SH = "/opt/miniforge3/etc/profile.d/conda.sh"
 GAPSEQ_ENV = "gapseq"
 WSL_WORK = "/opt/gem-gapseq-work"
+SEQDB_DIR = f"/opt/miniforge3/envs/{GAPSEQ_ENV}/share/gapseq/dat/seq/Bacteria"
 
 
 def wsl_run(bash_cmd, timeout=300):
@@ -79,13 +80,34 @@ def probe():
     import re
     mm = re.search(r"gapseq version:\s*([\d.]+)", out)
     res["gapseq_version"] = mm.group(1) if mm else out[:80]
-    seqdb = "/mnt/f/Datasets/gapseq/db"
+    # doall 实际读取 conda 环境内的 seq/Bacteria；旧探针却查 F: 备份并调用
+    # update-sequences -c，后者依赖 Zenodo 在线记录。网络解析失败会误报后端缺失。
+    # 本地元数据 + 三类序列文件同时检查，缺任何一项都不宣称可用。
     rc, out, err = wsl_run(
-        f"source {CONDA_SH} && conda activate {GAPSEQ_ENV} && "
-        f"gapseq update-sequences -t Bacteria -D {seqdb} -q -c 2>&1", 300)
-    res["checks"]["seqdb"] = "up-to-date" in out.lower()
+        f"set -o pipefail; cat {SEQDB_DIR}/version_seqDB.json && "
+        f"find {SEQDB_DIR}/rev -type f | wc -l && "
+        f"find {SEQDB_DIR}/rxn -type f | wc -l && "
+        f"find {SEQDB_DIR}/unrev -type f | wc -l", 120)
+    try:
+        meta, offset = json.JSONDecoder().raw_decode(out)
+        counts = [int(value) for value in out[offset:].split()]
+        metadata_ok = (isinstance(meta, dict)
+                       and isinstance(meta.get("version"), list)
+                       and len(meta["version"]) == 1
+                       and isinstance(meta["version"][0], str)
+                       and bool(meta["version"][0])
+                       and isinstance(meta.get("zenodoID"), list)
+                       and len(meta["zenodoID"]) == 1
+                       and isinstance(meta["zenodoID"][0], int)
+                       and meta["zenodoID"][0] > 0)
+        res["checks"]["seqdb"] = rc == 0 and metadata_ok and len(counts) == 3 and all(n > 0 for n in counts)
+        if res["checks"]["seqdb"]:
+            res["seqdb_version"] = meta["version"][0]
+            res["seqdb_counts"] = dict(zip(("rev", "rxn", "unrev"), counts))
+    except (IndexError, ValueError, TypeError, json.JSONDecodeError):
+        res["checks"]["seqdb"] = False
     if not res["checks"]["seqdb"]:
-        res["detail"] = f"序列库未注册（可能触发在线下载灾难）: {out[:400]}"
+        res["detail"] = f"gapseq 实际序列库缺失或不完整: {(out or err)[:400]}"
         res["level"] = "DEGRADED"
         return res
     res["capable"] = True
