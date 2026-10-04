@@ -161,7 +161,7 @@ def query_ledger(rtype=None, status=None, condition=None, model=None,
                  limit=None, offset=0, path=None, deprecated=None):
     """条件过滤（type/status/condition/model 前缀匹配、大小写不敏感、可组合）+ 分页。
     账本定位：显式 path > model（该模型自己的账本）> 聚合所有模型账本。
-    阶段D-P2：deprecated 过滤（True=仅打标行；False=仅未打标行；缺省=全部）。"""
+    deprecated 过滤（True=仅打标行；False=仅未打标行；缺省=全部）。"""
     rows, corrupt = _resolve_rows(path=path, model=model)
 
     def _pref(v, q):
@@ -189,7 +189,7 @@ def query_ledger(rtype=None, status=None, condition=None, model=None,
 
 
 def mark_deprecated_duplicates(path=None, progress=None):
-    """阶段D-P2：跨斜杠风格重复打标（一次性运维用；不删行、不改既有字段）。
+    """跨斜杠风格重复打标（一次性运维用；不删行、不改既有字段）。
     识别规则：同一归一化 content hash 的行组内，model 含反斜杠且存在正斜杠同预测 -> 打标
     deprecated=true + superseded_by=<正斜杠版 prediction_id>。path=None 时对每个活动账本执行。
     返回聚合计数。"""
@@ -310,7 +310,7 @@ def ledger_summary(path=None, model=None):
     """账本摘要：{total, by_status, by_type, by_model, deprecated_count}。
     账本定位：显式 path > model（该模型自己的账本）> 聚合所有模型账本。
     P1-3（2026-08-31）：按模型给 own_model_entries=该模型账本条数，防「把全局账本当作本模型预测」误读。
-    2026-08-31 用户决策后：一个模型一个账本，model 定位时 total 即该模型预测数。"""
+    约定：一个模型一个账本，model 定位时 total 即该模型预测数。"""
     rows, corrupt = _resolve_rows(path=path, model=model)
     by_status, by_type, by_model = {}, {}, {}
     dep = 0
@@ -474,7 +474,7 @@ if __name__ == "__main__":
         # 幂等：同内容复跑不追加
         r2 = register_predictions([mk(1), mk(2), mk(3)], path=p)
         assert r2["appended"] == 0 and r2["skipped_duplicates"] == 3, r2
-        # 阶段D P1：model 路径斜杠/大小写不同但指向同一文件 -> 仍判重复
+        # model 路径斜杠/大小写不同但指向同一文件 -> 仍判重复
         r2b = register_predictions([{**mk(1), "model": "f:\\m.XML"}], path=p)
         assert r2b["appended"] == 0 and r2b["skipped_duplicates"] == 1, r2b
         # 新增一条 + ID 连续
@@ -506,7 +506,7 @@ if __name__ == "__main__":
         update_row("P0002", status="literature_supported", path=p)
         rows2, corrupt2 = load_rows(p)
         assert len(corrupt2) == 1 and len(rows2) == 4, (corrupt2, rows2)
-        # 阶段D-P2：直写一条反斜杠 model 的历史态重复行（模拟归一化修复前的存量），
+        # 直写一条反斜杠 model 的历史态重复行（模拟归一化修复前的存量），
         # mark_deprecated_duplicates 打标（不删行）+ query 过滤 + summary deprecated_count
         n_before = len(load_rows(p)[0])
         with open(p, "a", encoding="utf-8") as f:
