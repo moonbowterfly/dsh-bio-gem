@@ -1,4 +1,4 @@
-# model_card.py — 模型卡 schema v2 统一写入器（B' 收尾 + Q2 工程质量件）
+# model_card.py — 模型卡 schema v2 统一写入器（工程质量件）
 # 职责: init_card（build 起卡）/ load / save / append_operation（lineage 版本递增 + changelog）
 #       / set_verified_phenotypes（phenotype 结果）/ set_essential_genes（必需基因 + 证据分级）
 # 纪律: 各工具完成后**仅当产物模型旁已有 card** 才向后追加；无卡不动（不凭空造卡）。

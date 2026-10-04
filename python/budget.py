@@ -1,4 +1,4 @@
-# budget.py — 防过补第五闸门（B' 后半新增，全局预算）
+# budget.py — 防过补第五闸门（全局预算）
 # 规格: PROMPT-L3 §2「单模型补洞历史累计新增反应数 ≤ max(5, 模型总反应数*5%)；
 #       超限返回 budget_exceeded + confirm_required，需显式 confirm_budget=true 才能继续」。
 # 计数口径: 反应 notes["source"] ∈ {gem-gapfill, gem-l3fix}（两代补洞的 provenance 约定）。

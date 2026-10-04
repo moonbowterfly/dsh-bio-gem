@@ -1,4 +1,4 @@
-# dsh-bio-gem — 架构文档（M1 定稿 2026-08-29）
+# dsh-bio-gem — 架构文档（2026-08-29 起）
 
 ## 1. 定位一句话
 
@@ -10,7 +10,7 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 
 | 日期 | 决策 | 依据 |
 |---|---|---|
-| 08-28 | 插件名 dsh-bio-gem；资产盘点：消费侧已就绪、补构建侧闭环 | 用户拍板 |
+| 08-28 | 插件名 dsh-bio-gem；资产盘点：消费侧已就绪、补构建侧闭环 | 用户决策 |
 | 08-29 | 引擎路线：**任务门槛路由**（不是简单 auto）；落地节奏 **M1 CarveMe+补洞 → M2 gapseq WSL 桥 → M3 双引擎交叉** | 独立设计评估 + 实测（CarveMe AB 不生长=补洞是生存线；WSL 桥显著降级交付风险；Docker 非 WSL 替代）|
 | 08-29 | MVP 工具集：gem_build / gem_validate（G1G2G3 必做，G4 条件、G5 抽检）/ gem_gapfind（L1L2L3）/ gem_gapfill（L1L2 规则自动）/ gem_report（薄版模型卡）；**gem_essentiality 不进首版** | 消费侧 bio_gene_knockout 已存在，避免重复实现 |
 | 08-29 | 修正建议：弃 μ 判据用 FBA 通量判据；pyrodigal 注释前端降 backlog；测试矩阵首版收敛 C58+2 公开株 | 输出口径为 objective_value；默认输入是带注释基因组 |
@@ -21,18 +21,18 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 
 | 工具 | Python 层 | 状态 |
 |---|---|---|
-| gem_build | build.py CLI（CarveMe M9 gapfill；fna 自动注释）| ✅ M1+模块 DONE（C58 63-70s）|
-| gem_validate | op validate（G1-G6 + GATE_REGISTRY）| ✅ M1 DONE |
-| gem_gapfind | op gapfind（L1-L3 分级 + 跨引擎介质归一化）| ✅ M1 DONE |
-| gem_gapfill | op gapfill（L1/L2 规则 + provenance）| ✅ M1 DONE |
-| gem_phenotype | op phenotype_fix（表型回填迭代）| ✅ A3 DONE |
+| gem_build | build.py CLI（CarveMe M9 gapfill；fna 自动注释）| ✅ 已完成（C58 63-70s）|
+| gem_validate | op validate（G1-G6 + GATE_REGISTRY）| ✅ 已完成 |
+| gem_gapfind | op gapfind（L1-L3 分级 + 跨引擎介质归一化）| ✅ 已完成 |
+| gem_gapfill | op gapfill（L1/L2 规则 + provenance）| ✅ 已完成 |
+| gem_phenotype | op phenotype_fix（表型回填迭代）| ✅ 已完成 |
 | gem_essentiality | op essential_scan（FVA 预筛 + 手工敲除；预测自动入账本）| ✅ P0 DONE |
 | gem_annotate | op annotate（官方优先 + pyrodigal）| ✅ P0 DONE |
 | gem_gapseq | op gapseq（WSL 原子四步，可选项）| ✅ 桥全通 |
-| gem_l3_fix | op l3_fix（L3 补洞：L3a 连通性 + L3b 白名单/BiGG；证据分级 + 预算闸门 + G6 回滚）| ✅ B' DONE（C58 Arabinose 0→0.851）|
+| gem_l3_fix | op l3_fix（L3 补洞：L3a 连通性 + L3b 白名单/BiGG；证据分级 + 预算闸门 + G6 回滚）| ✅ 已完成（C58 Arabinose 0→0.851）|
 | gem_report | op model_info（+ ledger_summary 基率摘要）| ✅ DONE |
 | gem_media_resolve | op media_resolve（介质解析 RPC，消费侧统一入口）| ✅ DONE |
-| gem_biomass | op biomass_inspect / biomass_apply（inspect 组分+对照参考；apply 覆盖表+三联对照+原文件不动回滚）| ✅ Q2 DONE（复位 delta 0.0）|
+| gem_biomass | op biomass_inspect / biomass_apply（inspect 组分+对照参考；apply 覆盖表+三联对照+原文件不动回滚）| ✅ 已完成（复位 delta 0.0）|
 | gem_fluxscan | op fluxscan（通量区间制：FVA 区间+pFBA 点值+条件对区间分离判定，overlap=伪影禁止引用）| ✅ 已完成（C58 AB 0.519981 / 蔗糖 supplement 0.97077）|
 | gem_sensitivity | op sensitivity（GAM×biomass 22 组合全量+稳定性三分类+单组分漂移；模型卡 robustness v3）| ✅ 已完成（基准复现 155）|
 | gem_ledger | op ledger（prediction ledger：list/query/update；幂等追加式账本）| ✅ 已完成（C58 155+19 条幂等复跑）|
@@ -54,10 +54,10 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 ## 4. 引擎路线（M1→M2→M3）
 
 - **M1（已完成 08-29，C58 实测）**：CarveMe 纯 Windows（独立 venv ~/.dsh/dsh-bio-gem/venv-carveme + diamond PATH 注入）。输入（protein.faa）→ carve -g M9（54s）→ 精确 M9 介质（media_db 提取）G3 PASS（C58 测 0.782）→ 用户目标介质 resolve（跨引擎自然名）→ G3 FAIL 时 L1/L2 规则补洞 → 模型卡。**CarveMe 模型实测：M9 可生长；AB 目标介质 FAIL 且为 L3 内部路径（L1/L2 规则不可修）——诚实报告为已知边界（研究设计既有结论：CarveMe M9 补洞局限）。**
-- **M2（2026-08-29 代码完成，doall 实测进行中）**：gapseq WSL2 桥（`python/gapseq_wsl.py`）。能力探测四件套（wsl/发行版/gapseq 版本/序列库注册 up-to-date——防假已装 UniProt 灾难）；新版 wsl.exe 输出 UTF-8（旧版 UTF-16LE，双解码兼容）；doall 哨兵文件轮询（30-60min，每 2min 进度 + 日志尾部旁观）；产物拷回 → 目标介质验证（AB 自然名）→ L1/L2 补洞闭环 → 模型卡。gem_build `engine` 参数（carveme|gapseq）+ 60min 超时。分发时采用**私有发行版**（wsl --import 自包含 bundle：R+gapseq+序列库 v1.5+哈希校验，版本钉死）。任务分步化（draft/build/transport/fill/adjust 每步落盘 → 断点续跑）待做。
+- **M2（2026-08-29 起）**：gapseq WSL2 桥（`python/gapseq_wsl.py`）。能力探测四件套（wsl/发行版/gapseq 版本/序列库注册 up-to-date——防假已装 UniProt 灾难）；新版 wsl.exe 输出 UTF-8（旧版 UTF-16LE，双解码兼容）；doall 哨兵文件轮询（30-60min，每 2min 进度 + 日志尾部旁观）；产物拷回 → 目标介质验证（AB 自然名）→ L1/L2 补洞闭环 → 模型卡。gem_build `engine` 参数（carveme|gapseq）+ 60min 超时。分发时采用**私有发行版**（wsl --import 自包含 bundle：R+gapseq+序列库 v1.5+哈希校验，版本钉死）。任务分步化（draft/build/transport/fill/adjust 每步落盘 → 断点续跑）待做。
 - **M3**：双引擎交叉验证，产出**分歧清单**（两引擎不一致反应/基因 = 低置信区，需文献/实验校验）而非平均；可选集成 gemsembler（先验证成熟度）；所有比对按**反应级等价类**而非基因级（引擎 GPR 粒度不同）。
 
-## 5. 验证关卡规格（HANDOFF-03 产品化 + G0）
+## 5. 验证关卡规格（产品化 + G0）
 
 | 关卡 | 内容 | 首版 | 判定线 |
 |---|---|---|---|

@@ -1,4 +1,4 @@
-# l3_fix.py — B' 后半：L3 内部路径补洞（两级）
+# l3_fix.py — L3 内部路径补洞（两级）
 #   L3a 模型内连通性: 先"全内部反应放开方向"LP 预检（快速严谨判负），可行才用 cobra GapFiller
 #        universal=模型自身反应池（放开方向副本，NEW id），MILP 选最小集 → 对原反应放宽 bounds（不复制反应）。
 #        注: cobra 0.32.1 GapFiller(universal=None) 语义是"空反应池"（只加 demand），不是"模型自身反应池"
@@ -43,8 +43,14 @@ COMP_MAP = {"c": "c0", "e": "e0", "p": "p0"}  # BiGG 区室后缀 -> gapseq 区�
 
 WHITELIST_DIR = os.path.join(os.path.expanduser("~"), ".dsh", "dsh-bio-gem", "whitelist")
 # 本地白名单数据库（license 守则: 仅本地留存，不进 git/发布包；GEM_WHITELIST_DB_DIR 可覆盖）
-RXN_DB_DIR = os.environ.get("GEM_WHITELIST_DB_DIR", r"D:\Program\hermes\temp\gem_whitelist")
-DEFAULT_UNIVERSAL = r"D:\Program\hermes\temp\gem_universal\iML1515.xml"
+RXN_DB_DIR = os.environ.get(
+    "GEM_WHITELIST_DB_DIR",
+    os.path.join(os.path.expanduser("~"), ".dsh", "dsh-bio-gem", "whitelist-db"),
+)
+DEFAULT_UNIVERSAL = os.environ.get(
+    "GEM_UNIVERSAL_MODEL",
+    os.path.join(os.path.expanduser("~"), ".dsh", "dsh-bio-gem", "models", "iML1515.xml"),
+)
 
 PTS_RE = re.compile(r"(?i)\bpts\b|phosphotransferase|pep:pyr")
 

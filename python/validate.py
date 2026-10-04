@@ -1,7 +1,7 @@
-# validate.py — dsh-bio-gem 五道验证关卡（M1）
+# validate.py — dsh-bio-gem 五道验证关卡
 # G1 加载统计 / G2 内部反应元素平衡 / G3 生长真实性 / G4 底物表型(条件) / G5 必需基因抽检(条件)
 # 规格: docs/ARCHITECTURE.md §5；判据口径 = FBA objective_value（biomass 归一化 → 比生长速率 μ，单位 1/h）
-# 实现从 HANDOFF-03 五道关卡协议产品化（农杆菌项目验证过的逻辑）
+# 五道关卡协议产品化（农杆菌项目验证过的逻辑）
 import re
 import os
 import json
@@ -262,7 +262,7 @@ class Validator:
     # ------------------------------------------------------------------ G4
     def g4_phenotype(self, table_path=None, substrates=None, medium=None, carbon_mode="supplement"):
         """条件执行：需参照表（TSV: substrate<TAB>published 0/1）或 substrates+published。
-        carbon_mode: supplement=基准培养基不变+底物-10（对齐 HANDOFF-03 关卡4 基线 16/19→17/19）；
+        carbon_mode: supplement=基准培养基不变+底物-10（对齐关卡4 基线 16/19→17/19）；
                      sole=去含碳交换后底物-10（唯一碳源严格语义，氮源类测试会误判）。"""
         if table_path and os.path.exists(table_path):
             rows = []

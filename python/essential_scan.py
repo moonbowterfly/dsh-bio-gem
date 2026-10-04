@@ -63,7 +63,7 @@ def scan_essentiality(m, gene_subset=None, progress=None, return_candidates=Fals
     print(f"[scan] 候选基因（关联可通量反应）{len(cand_genes)}", file=sys.stderr)
     print(f"[scan]         预计免敲 {max(0, len(m.genes) - len(cand_genes))} 个（{max(0, len(m.genes)-len(cand_genes))/max(1,len(m.genes))*100:.0f}%）", file=sys.stderr)
 
-    # 2) 手工敲除循环（HANDOFF-03：不用 single_gene_deletion）
+    # 2) 手工敲除循环（不用 single_gene_deletion）
     t0 = time.time()
     essential = []
     for gid in sorted(cand_genes):
@@ -149,7 +149,7 @@ def essential_scan(model_path, medium=None, gene_subset=None, progress=None, led
     result.update({
         "medium_preset": preset,
         "medium_unresolved": unresolved,
-        "note": "必需判定=A 培养基下敲除生长<1e-6；evidence 分级按基因支撑反应是否含 EVIDENCE_math（Q2）",
+        "note": "必需判定=A 培养基下敲除生长<1e-6；evidence 分级按基因支撑反应是否含 EVIDENCE_math",
         # 阶段A-M4 口径声明（只增）：wt_growth 为单点 FBA 值
         "units": "1/h",
         "point_value_note": "单点 FBA 值，非解空间硬结论；条件对比请用 gem_fluxscan 区间分离判定",

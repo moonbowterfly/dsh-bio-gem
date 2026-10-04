@@ -128,7 +128,7 @@ def find_biomass_gam(m):
 
 def _apply_biomass_scale(m, bio_id, f, gam_info):
     """biomass 组分缩放 ×f（排除 GAM stub 与 Biomass 产物——正交化）。
-    cobra add_metabolites 是增量语义：绝对设定必须用 delta = 目标-现值（Q2 教训），回读校验。
+    cobra add_metabolites 是增量语义：绝对设定必须用 delta = 目标-现值（实测教训），回读校验。
     注意：原始系数必须在 add 之前快照（add 后 bio.metabolites 已是新值）。"""
     bio = m.reactions.get_by_id(bio_id)
     skip = set((gam_info.get("gam_mets") or {}).values()) | \

@@ -389,7 +389,8 @@ def fetch_bigg_model(model_id, dest_dir=None):
     URL 策略（实测 2026-08-30）：静态库 http://bigg.ucsd.edu/static/models/<id>.xml 返回标准 SBML；
     `/api/v2/universal/models/<id>/download` 实为 404（universal 是 reactions 命名空间），
     /api/v2/models/<id>/download 返回 200 但内容是 BiGG JSON（非 SBML）——两者均不采用。
-    直连失败走系统代理；都失败抛错（调用方如实报告，不阻塞本地对比）。"""
+    直连失败时按环境变量代理（HTTP_PROXY/HTTPS_PROXY/ALL_PROXY）重试一次；
+    未配置环境代理或仍失败则抛错（调用方如实报告，不阻塞本地对比）。"""
     import urllib.request
     import shutil
     urls = [f"http://bigg.ucsd.edu/static/models/{model_id}.xml"]
@@ -398,10 +399,11 @@ def fetch_bigg_model(model_id, dest_dir=None):
     dest = os.path.join(dest_dir, f"bigg_{model_id}.xml")
     if os.path.exists(dest) and os.path.getsize(dest) > 100000:
         return dest, "cached（已有本地副本）"
+    env_proxies = {k: v for k, v in urllib.request.getproxies().items() if v}
+    fallbacks = [("direct", None)] + ([("env-proxy", env_proxies)] if env_proxies else [])
     last_err = None
     for url in urls:
-        for tag, proxies in (("direct", None), ("proxy", {"http": "http://127.0.0.1:27890",
-                                                         "https": "http://127.0.0.1:27890"})):
+        for tag, proxies in fallbacks:
             try:
                 t0 = time.time()
                 req = urllib.request.Request(url, headers={"User-Agent": "dsh-bio-gem benchmark/1.0"})
@@ -417,7 +419,7 @@ def fetch_bigg_model(model_id, dest_dir=None):
                 last_err = f"{type(e).__name__}: {str(e)[:200]}"
                 if os.path.exists(dest + ".tmp"):
                     os.remove(dest + ".tmp")
-    raise RuntimeError(f"bigg download failed（直连+代理均失败）: {last_err}")
+    raise RuntimeError(f"bigg download failed（直连与代理回退均失败）: {last_err}")
 
 
 def medium_adaptation_hints(model_path, medium, max_hints=5, progress=None):

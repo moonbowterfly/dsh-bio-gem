@@ -1,4 +1,4 @@
-# biomass_tools.py — biomass 精修工具链（Q2 任务一）
+# biomass_tools.py — biomass 精修工具链（inspect / apply）
 # inspect（只读）: biomass 组分表 + 类别分布（氨基酸/核酸/脂质/辅因子/金属/其他）+ 原子总量
 #                  + 可选参考对照（内置 iML1515 biomass；iNX1344_v4 按代谢物名同义尽力翻译，翻不了明示 unmapped）
 # apply（显式）: biomass_profile 覆盖表（op=set|add|remove）→ 副本替换 biomass → 强制 G1-G6 重验
@@ -16,8 +16,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cobra
 
 EX_PREFIX = ("EX_", "DM_", "SK_")
-DEFAULT_UNIVERSAL = r"D:\Program\hermes\temp\gem_universal\iML1515.xml"
-DEFAULT_INX = r"F:\A_NGJ plan\Zcode\models\iNX1344_v4.xml"
+DEFAULT_UNIVERSAL = os.environ.get(
+    "GEM_UNIVERSAL_MODEL",
+    os.path.join(os.path.expanduser("~"), ".dsh", "dsh-bio-gem", "models", "iML1515.xml"),
+)
+DEFAULT_INX = os.environ.get(
+    "GEM_INX_MODEL",
+    os.path.join(os.path.expanduser("~"), ".dsh", "dsh-bio-gem", "models", "iNX1344_v4.xml"),
+)
 GROWTH_UNITS = "1/h"
 EPS = 1e-6
 

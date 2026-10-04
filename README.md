@@ -129,7 +129,7 @@ unzip -o diamond.zip diamond.exe -d "$HOME/.dsh/dsh-bio-gem/venv-carveme/Scripts
 
 ```sh
 # 冒烟：不依赖 dsh，直测 Python 层 + 工具注册表
-# 断言锚定固定夹具路径（见 test/smoke.js 顶部常量），换机器先改路径
+# 资产（C58 模型等）不在仓库内：用 --assets-root 或 DSH_BIO_GEM_ASSETS 指定；缺资产时相关检查 SKIP
 GEM_PYTHON=<你的-cobra-python> node test/smoke.js --skip-build   # 跳过 ~70s 的 build 单测
 GEM_PYTHON=<你的-cobra-python> node test/smoke.js                # 含 build 单测
 # 托管领域扩展的只读 integration 协议（无需 dsh 实例）
@@ -198,7 +198,7 @@ npx -y @deepseek-ai/dsh --profile web --dump-config | grep dsh-bio-gem
 
 CarveMe + diamond are required only by `gem_build`; the other 20 tools need nothing but a `cobra`-enabled Python.
 
-## 工具（20）
+## 工具（23）
 
 | 工具 | 作用 | 状态 |
 |---|---|---|

@@ -1,6 +1,6 @@
 # gapseq_wsl.py — dsh-bio-gem M2：gapseq 引擎的 WSL 桥（Windows → WSL2）
 # 实测背景（农杆菌 C58 项目 2026-08）：gapseq 2.1.0 部署于 WSL2 Ubuntu-22.04
-# conda env "gapseq"（TUNA 渠道），序列库 F:\Datasets\gapseq\db\Bacteria（v1.5）。
+# conda env "gapseq"（TUNA 渠道）+ 本地序列库（路径见文件内常量，换机器需相应调整）。
 # 关键实测（2026-08-29）：
 #   - 新版 wsl.exe（Win11）输出 UTF-8；旧版 UTF-16LE —— decode 双兼容（UTF-8 strict 优先）
 #   - wsl.exe 命令行传含空格路径 + 引号必坏 -> 一切路径进脚本文件，脚本用 base64 传输

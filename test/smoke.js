@@ -3,11 +3,9 @@
 //   --skip-build      跳过 build 单测（默认跑，耗时 ~70s）
 //   --require-assets  资产缺失时以非零退出（CI 严格模式）；默认 SKIP 且退出 0
 //   --assets-root     显式指定模型资产根目录（设了就不再回退内置候选；CI/测试注入点）
-// 资产解析（2026-09-19 审计修复）：
-//   模型资产已从 F:\A_NGJ plan 迁至 F:\Biodata\Old\A_NGJ plan——旧实现硬编码单一路径，
-//   迁移后 smoke 直接 OSError 崩溃而不是给出可读结论。现在多候选自动发现 + 缺资产 SKIP：
-//   优先级 = --assets-root > DSH_BIO_GEM_ASSETS 环境变量 > 内置候选（按新→旧）。
-//   注意：缺资产 ≠ 回归失败——相关检查标记 SKIP，退出码由 --require-assets 决定。
+// 资产解析（显式配置 + 缺资产 SKIP）：
+//   优先级 = --assets-root > DSH_BIO_GEM_ASSETS 环境变量；未配置时相关检查标记 SKIP。
+//   注意：缺资产 ≠ 回归失败——退出码由 --require-assets 决定。
 // 断言（C58 回归锚）：
 //   model_info  : 1084 基因 / 2492 反应
 //   validate    : G1 PASS / G3 PASS 0.519981（AB 自然名介质）
@@ -21,7 +19,8 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
 
-const PY = process.env.GEM_PYTHON || 'C:/Users/shuai/miniconda3/python.exe'
+const PY = process.env.GEM_PYTHON
+  || join(homedir(), '.dsh', 'dsh-bio-genie', 'python-env', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
 const REPO = join(fileURLToPath(new URL('.', import.meta.url)), '..')
 const PYDIR = join(REPO, 'python')
 
@@ -32,12 +31,7 @@ const argVal = (flag) => {
   return i >= 0 && i + 1 < argv.length ? argv[i + 1] : null
 }
 const explicitRoot = argVal('--assets-root') || process.env.DSH_BIO_GEM_ASSETS || null
-const ASSET_ROOTS = explicitRoot
-  ? [explicitRoot]
-  : [
-      'F:/Biodata/Old/A_NGJ plan/Zcode',    // 2026-09 之后的实际位置
-      'F:/A_NGJ plan/Zcode',                // 历史位置（迁移前）
-    ]
+const ASSET_ROOTS = explicitRoot ? [explicitRoot] : []
 
 function findAsset(relativeCandidates) {
   for (const root of ASSET_ROOTS) {
@@ -51,24 +45,24 @@ function findAsset(relativeCandidates) {
 
 const C58 = findAsset(['models/gapseq_C58/C58.xml'])
 const C58P1 = findAsset(['models/gapseq_C58/C58_P1.xml'])
-// 表型表用仓库内 fixture：曾硬编码 D:/Program/hermes/temp/ 下的临时文件，
+// 表型表用仓库内 fixture：曾硬编码临时目录下的文件，
 // 该文件被 temp 清理删除后断言会以「数据缺失」伪装成「断言失败」（2026-10-01 实测）。
 const PHENOTYPE_TABLE = join(REPO, 'test', 'fixtures', 'phenotype-table.tsv')
 const INX4 = findAsset(['models/iNX1344_v4.xml'])
 // FAA 是 build 产物（独立于项目模型目录）：显式 root 模式下在 root 内找，否则用默认路径
 const FAA = explicitRoot
   ? findAsset(['C58_protein.faa'])
-  : (process.env.DSH_BIO_GEM_FAA || 'D:/Program/hermes/temp/gem_build_test/C58_protein.faa')
+  : (process.env.DSH_BIO_GEM_FAA || null)
 
 const HAS_MAIN = Boolean(C58 && C58P1)
 const HAS_INX4 = Boolean(INX4)
 const ASSET_HINT = explicitRoot
   ? `资产根目录 ${explicitRoot}`
-  : `候选目录 ${ASSET_ROOTS.join(' | ')}（可用 --assets-root 或 DSH_BIO_GEM_ASSETS 覆盖）`
+  : '未配置资产目录（用 --assets-root 或 DSH_BIO_GEM_ASSETS 指定模型资产根）'
 
 // 默认账本（一个模型一个账本：~/.dsh/dsh-bio-gem/ledger/<模型文件名>.jsonl，命名规则与
 // python/ledger.py 的 model_ledger_path 同步）——账本缺失/为空时，enrichment 的基因输入
-// 与 targets 的数据源为空（2026-09-10 重建后曾缺失，已从快照恢复）。
+// 与 targets 的数据源为空（新环境缺账本时相关检查 SKIP）。
 // 缺账本 → 相关检查 SKIP（新环境/CI 不误报为回归失败）。
 const LEDGER_DIR = join(homedir(), '.dsh', 'dsh-bio-gem', 'ledger')
 function ledgerReady(modelPath) {
@@ -168,10 +162,7 @@ async function main() {
 
     // 3b) 跨引擎介质解析护栏：O2 不得误配到 Acetoin（2026-08-29 回归：子串回退防误伤）
     //     修复：existsSync 判断必须在调用**之前**（旧实现先调用后判断，模型缺失时先抛栈再 skip）
-    const carveModel = explicitRoot
-      ? findAsset(['C58_carveme_test.xml'])
-      : (existsSync('D:/Program/hermes/temp/gem_build_test/C58_carveme_test.xml')
-          ? 'D:/Program/hermes/temp/gem_build_test/C58_carveme_test.xml' : null)
+    const carveModel = explicitRoot ? findAsset(['C58_carveme_test.xml']) : null
     if (carveModel) {
       const cev = await runPy('gapfind.py', { model: carveModel, medium: { medium_name: 'AB' } }, true)
       const rx = cev?.resolved_exchanges ?? []
@@ -228,7 +219,7 @@ async function main() {
     skip('build（protein.faa -> M9）', `C58_protein.faa 不存在（${FAA ?? '未解析到'}）`)
   }
 
-  // 6) l3_fix（B' 后半）：op 协议 + 防过补第五闸门 + 工具注册计数（不跑 L3 MILP，保持冒烟秒级）
+  // 6) l3_fix：op 协议 + 防过补第五闸门 + 工具注册计数（不跑 L3 MILP，保持冒烟秒级）
   const l3p = await runPy('gem_ops.py', { op: 'l3_fix', args: {} })
   check('l3_fix: op 协议（缺 model 明确报错）',
     l3p?.ok === false && /model file not found/.test(l3p?.error || ''), JSON.stringify(l3p))
@@ -241,7 +232,7 @@ async function main() {
   // test/optional-injection.js（真实 plugin.apply()）承担——2026-09-19 审计 III-6。
   check('tools: 23 个语义化工具注册（源码计数）', nReg === 23, `got ${nReg}`)
 
-  // 7) Q2 工程质量件：SBML 往返保真（GPR 防丢）+ 模型卡 v2 selftest
+  // 7) 工程质量件：SBML 往返保真（GPR 防丢）+ 模型卡 v2 selftest
   if (HAS_MAIN) {
     const rt = await runPy('roundtrip_check.py', { model: C58 })
     check('往返保真: 计数一致 + GPR 无丢失（≥5 复合 GPR 精确对比）',

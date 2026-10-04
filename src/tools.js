@@ -260,7 +260,7 @@ export function registerTools(ctx) {
     timeoutMs: 120_000,
   })))
 
-  // gem_l3_fix：L3 内部路径补洞（B' 后半：L3a 模型内连通性 + L3b 白名单/BiGG 反应式 + 证据分级）
+  // gem_l3_fix：L3 内部路径补洞（L3a 模型内连通性 + L3b 白名单/BiGG 反应式 + 证据分级）
   disposers.push(ctx.tools.register(gemTool({
     name: 'gem_l3_fix',
     description:
@@ -288,7 +288,7 @@ export function registerTools(ctx) {
     timeoutMs: 900_000,
   })))
 
-  // gem_biomass：biomass 精修（Q2：inspect 只读 / apply 显式覆盖表 + 三联对照）
+  // gem_biomass：biomass 精修（inspect 只读 / apply 显式覆盖表 + 三联对照）
   disposers.push(ctx.tools.register(defineTool({
     name: 'gem_biomass',
     description:
@@ -417,7 +417,7 @@ export function registerTools(ctx) {
     name: 'gem_benchmark',
     description:
       '通用基准对比（benchmark）：任何两个代谢模型跑规范对比表，产出论文级对比。model_a/model_b 支持本地 SBML 绝对路径' +
-      '或 "bigg:<model_id>" URI（如 bigg:iML1515，BiGG 静态库下载到 ~/.dsh/dsh-bio-gem/models/，直连失败自动走系统代理，下载后缓存）。' +
+      '或 "bigg:<model_id>" URI（如 bigg:iML1515，BiGG 静态库下载到 ~/.dsh/dsh-bio-gem/models/，直连失败时按环境变量代理（HTTP_PROXY/HTTPS_PROXY）重试，下载后缓存）。' +
       '输出：ID 体系探测 / 六道关卡 G1-G6 逐项并列 / 声明介质生长（含介质层两级策略——无 EX_ 层的模型自动回退 ' +
       'boundary 单代谢物反应解析，boundary_style 标注）/ biomass 可行性探针（逐组分净产测试，结构性断供清单）/ ' +
       '必需性对比（复用 essential_scan；任一侧 wt<=EPS 判退化只报结构信息不做垃圾对比，基因映射尽力而为如实报覆盖率，' +

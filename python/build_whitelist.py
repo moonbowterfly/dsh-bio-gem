@@ -1,12 +1,15 @@
-# build_whitelist.py — B' 白名单 B0/B1：gapseq rxn 库 -> 反应白名单（本地基准，license 守则：不分发）
+# build_whitelist.py — 反应白名单构建（B0/B1 两级）：gapseq rxn 库 → 反应白名单（本地基准，license 守则：不分发）
 # B0: 聚合 rxn/*.fasta（非空）→ rxn_proteins.fa + mapping（序列header -> 反应ID）
 # B1: diamond makedb + blastp 目标物种 faa → 命中反应集（EVIDENCE_sequence 候选池）
 import os
 import sys
 import time
 
-SEQDB = os.environ.get("GEM_GAPSEQ_DB", r"F:\Datasets\gapseq\db\Bacteria")
-DIAMOND = r"C:\Users\shuai\.dsh\dsh-bio-gem\venv-carveme\Scripts\diamond.exe"
+SEQDB = os.environ.get("GEM_GAPSEQ_DB", "")
+DIAMOND = os.environ.get(
+    "GEM_DIAMOND",
+    os.path.join(os.path.expanduser("~"), ".dsh", "dsh-bio-gem", "venv-carveme", "Scripts", "diamond.exe"),
+)
 
 
 def build_rxn_fasta(out_fa, out_map=None, min_size=100):
@@ -115,7 +118,10 @@ def subprocess_run(cmd, timeout=3600):
 
 if __name__ == "__main__":
     import json
-    fa = sys.argv[1] if len(sys.argv) > 1 else r"D:\Program\hermes\temp\gem_whitelist\rxn_all.fa"
+    fa = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
+        os.path.expanduser("~"), ".dsh", "dsh-bio-gem", "whitelist", "rxn_all.fa")
+    if not SEQDB or not os.path.isdir(os.path.join(SEQDB, "rxn")):
+        sys.exit("GEM_GAPSEQ_DB 未设置或无效：请指向 gapseq 序列库目录（<db>/Bacteria，内含 rxn/ 子目录）")
     out_dir = os.path.dirname(fa) or "."
     os.makedirs(out_dir, exist_ok=True)
     map_p = os.path.join(out_dir, "rxn_map.tsv")

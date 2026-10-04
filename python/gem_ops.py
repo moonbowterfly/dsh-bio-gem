@@ -243,7 +243,7 @@ def op_media_resolve(args):
 
 
 # ---------------------------------------------------------------------------
-# op: l3_fix — B' 后半：L3 内部路径补洞（L3a 模型内连通性 + L3b 白名单/BiGG 反应式）
+# op: l3_fix — L3 内部路径补洞（L3a 模型内连通性 + L3b 白名单/BiGG 反应式）
 # 证据分级 EVIDENCE_sequence/math；防过补第五闸门（budget.py）；补后 G1-G6 重验 + G6 失败回滚
 # ---------------------------------------------------------------------------
 def op_l3_fix(args):
@@ -371,7 +371,7 @@ OPS = {
 
 
 # ---------------------------------------------------------------------------
-# op: biomass_inspect / biomass_apply — Q2 任务一：biomass 精修（可选 profile，不默认替换）
+# op: biomass_inspect / biomass_apply — biomass 精修（可选 profile，不默认替换）
 # ---------------------------------------------------------------------------
 def op_biomass_inspect(args):
     from biomass_tools import inspect_biomass
