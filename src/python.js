@@ -125,7 +125,7 @@ export function callGem(op, args, opts = {}) {
   return new Promise((resolve, reject) => {
     const py = pythonExe()
     const script = join(PYTHON_DIR, 'gem_ops.py')
-    const cp = spawn(py, ['-I', script], { cwd: PYTHON_DIR, windowsHide: true })
+    const cp = spawn(py, ['-I', script], { cwd: opts.cwd || PYTHON_DIR, windowsHide: true })
     let out = ''
     let err = ''
     cp.stdout.on('data', (d) => { out += d })

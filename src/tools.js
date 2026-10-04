@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 import { callGem, stampProvenance } from './python.js'
 import { startBuild, jobStatus } from './jobs.js'
+import { resolveWorkdir } from './workdir.js'
 
 /** 校验输入存在（绝对路径或用户给定路径）。 */
 function requirePath(v, label) {
@@ -27,8 +28,8 @@ function gemTool(opts) {
       schema: { type: 'object', additionalProperties: true },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
-    async execute(args) {
-      return callGem(opts.op, args, { timeoutMs: opts.timeoutMs ?? 300_000 })
+    async execute(args, exec) {
+      return callGem(opts.op, args, { timeoutMs: opts.timeoutMs ?? 300_000, cwd: resolveWorkdir(exec) })
     },
   })
 }
@@ -317,9 +318,9 @@ export function registerTools(ctx) {
       schema: { type: 'object', additionalProperties: true },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
-    async execute(args) {
+    async execute(args, exec) {
       const op = args.action === 'apply' ? 'biomass_apply' : 'biomass_inspect'
-      return callGem(op, args, { timeoutMs: 900_000 })
+      return callGem(op, args, { timeoutMs: 900_000, cwd: resolveWorkdir(exec) })
     },
   })))
 
