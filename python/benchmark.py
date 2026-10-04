@@ -1,4 +1,4 @@
-# benchmark.py — 阶段B-B1 gem_benchmark 通用基准对比（与物种无关）
+# benchmark.py — gem_benchmark 通用基准对比（与物种无关）
 # 六件通用能力：①介质解析两级策略复用（gapfind.build_ex_index 回退 boundary）②biomass 可行性探针
 # ③六关 G1-G6 并列 ④必需性对比+差异归因（退化侧只报结构不做垃圾对比）⑤账本 comparison_refs 回填
 # （update 语义幂等可重入）⑥可复现性评估。
@@ -400,6 +400,10 @@ def fetch_bigg_model(model_id, dest_dir=None):
     if os.path.exists(dest) and os.path.getsize(dest) > 100000:
         return dest, "cached（已有本地副本）"
     env_proxies = {k: v for k, v in urllib.request.getproxies().items() if v}
+    # ALL_PROXY（getproxies 的 "all" 键）对 http/https 请求不会自动生效，显式映射
+    if env_proxies.get("all"):
+        for _sch in ("http", "https"):
+            env_proxies.setdefault(_sch, env_proxies["all"])
     fallbacks = [("direct", None)] + ([("env-proxy", env_proxies)] if env_proxies else [])
     last_err = None
     for url in urls:
@@ -423,7 +427,7 @@ def fetch_bigg_model(model_id, dest_dir=None):
 
 
 def medium_adaptation_hints(model_path, medium, max_hints=5, progress=None):
-    """阶段C-C5：B3 molybdate 式诊断自动化（通用函数）。介质下 wt<=EPS 时，在严格介质基础上
+    """B3 molybdate 式诊断自动化（通用函数）。介质下 wt<=EPS 时，在严格介质基础上
     逐个补充模型其它交换反应（单变量 lb=-10 试验），报告能恢复生长的成分 -> '介质疑似缺 X'。"""
     m = silent_read_sbml(model_path)
     resolved, unresolved, preset = setup_model_medium(m, medium)

@@ -196,7 +196,7 @@ unzip -o diamond.zip diamond.exe -d "$HOME/.dsh/dsh-bio-gem/venv-carveme/Scripts
 npx -y @deepseek-ai/dsh --profile web --dump-config | grep dsh-bio-gem
 ```
 
-CarveMe + diamond are required only by `gem_build`; the other 20 tools need nothing but a `cobra`-enabled Python.
+CarveMe + diamond are required only by `gem_build`; the other 22 tools need nothing but a `cobra`-enabled Python.
 
 ## 工具（23）
 

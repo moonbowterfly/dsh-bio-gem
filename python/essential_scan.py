@@ -2,7 +2,7 @@
 # 流程: 介质设置 -> FVA(全范围) 预筛可通量基因（死基因免敲）-> 手工单基因敲除
 #       -> 必需基因列表 + 模型卡章节数据（证据分级配色字段）
 # Windows 纪律: FVA processes=1（无 fork）；手工敲除循环；GLPK 快速线性
-# 阶段A-M2: 介质 setup 与扫描核心拆为 setup_model_medium/scan_essentiality 供 sensitivity 复用
+# 介质 setup 与扫描核心拆为 setup_model_medium/scan_essentiality 供 sensitivity 复用
 #           （行为不变，C58 AB 必需 155 锚点必须原样复现）
 import os
 import sys
@@ -19,7 +19,7 @@ FVA_EPS = 1e-9
 
 def setup_model_medium(m, medium=None):
     """介质 setup（对齐 validate G3）：expand_medium -> 全交换清零 -> resolve_medium 设 bounds。
-    阶段A-M2 抽出：essential_scan 与 sensitivity 共用同一介质口径。返回 (resolved, unresolved, preset)。"""
+    抽出（供复用）：essential_scan 与 sensitivity 共用同一介质口径。返回 (resolved, unresolved, preset)。"""
     med, preset = expand_medium(medium) if medium else ({}, None)
     resolved, unresolved = resolve_medium(m, med) if med else ({}, [])
     for r in m.reactions:
@@ -32,7 +32,7 @@ def setup_model_medium(m, medium=None):
 
 
 def prescreen_candidates(m, gene_subset=None):
-    """FVA(fraction=0) 预筛（阶段C-C2 抽出复用）：返回 (active_rxns, cand_genes, n_tested, fva_s)。
+    """FVA(fraction=0) 预筛（抽出复用）：返回 (active_rxns, cand_genes, n_tested, fva_s)。
     cand_genes = 关联至少一个可通量反应的基因（死基因免敲）；n_tested = FVA 检查的反应总数。"""
     t0 = time.time()
     fva = flux_variability_analysis(m, fraction_of_optimum=0.0, processes=1)
@@ -50,7 +50,7 @@ def prescreen_candidates(m, gene_subset=None):
 
 
 def scan_essentiality(m, gene_subset=None, progress=None, return_candidates=False):
-    """必需性扫描核心（阶段A-M2 抽出复用）。输入：介质 bounds 已设好的模型。
+    """必需性扫描核心（抽出复用）。输入：介质 bounds 已设好的模型。
     FVA(fraction=0) 预筛 -> 可通量反应关联基因 -> 手工敲除（<EPS 判必需）。
     返回 {wt_growth, total_genes, fva_tested_reactions, active_reactions, tested_genes,
     essential_count, essential_genes, organs, fva_seconds, knock_seconds}。"""
@@ -88,7 +88,7 @@ def scan_essentiality(m, gene_subset=None, progress=None, return_candidates=Fals
         "fva_seconds": fva_s,
         "knock_seconds": knock_s,
     }
-    if return_candidates:  # 阶段C-C2：double_knockout 复用（避免二次 FVA 预筛）
+    if return_candidates:  # double_knockout 复用（避免二次 FVA 预筛）
         out["candidate_genes"] = sorted(cand_genes)
         out["active_rxn_ids"] = sorted(active_rxns)
     return out
@@ -150,7 +150,7 @@ def essential_scan(model_path, medium=None, gene_subset=None, progress=None, led
         "medium_preset": preset,
         "medium_unresolved": unresolved,
         "note": "必需判定=A 培养基下敲除生长<1e-6；evidence 分级按基因支撑反应是否含 EVIDENCE_math",
-        # 阶段A-M4 口径声明（只增）：wt_growth 为单点 FBA 值
+        # 口径声明（只增）：wt_growth 为单点 FBA 值
         "units": "1/h",
         "point_value_note": "单点 FBA 值，非解空间硬结论；条件对比请用 gem_fluxscan 区间分离判定",
     })
@@ -161,7 +161,7 @@ def essential_scan(model_path, medium=None, gene_subset=None, progress=None, led
             set_essential_genes(model_path, result, model=m)
     except Exception:
         pass
-    # 阶段A遗留修正（退化护栏，只增分支）：wt<=EPS 时必需性判定恒真（v=0 使全部候选判"必需"，
+    # 退化护栏（只增分支）：wt<=EPS 时必需性判定恒真（v=0 使全部候选判"必需"，
     # M5 实测曾把 iNX1344_v4 的 1066 条此类退化预测写入真实账本）——跳过 ledger 自动登记。
     # C58 正常路径（wt>EPS）不进此分支，登记行为不变。
     if result["wt_growth"] <= EPS:
@@ -171,7 +171,7 @@ def essential_scan(model_path, medium=None, gene_subset=None, progress=None, led
                                          "skipped_degraded": len(result["essential_genes"]),
                                          "degraded": True, "warn": warn}
         return result
-    # 阶段A-M3: prediction ledger 自动登记（每必需基因一条；幂等去重；写入失败仅 WARN 不阻塞）
+    # prediction ledger 自动登记（每必需基因一条；幂等去重；写入失败仅 WARN 不阻塞）
     try:
         import ledger as _ledger
         from model_card import load_card as _load_card

@@ -1,4 +1,4 @@
-# enrichment.py — 阶段C-C3 必需基因通路富集（超几何 + BH FDR；菌种通用）
+# enrichment.py — 必需基因通路富集（超几何 + BH FDR；菌种通用）
 # 通路注释源（C3 开工探索结论）：gapseq 模型在 SBML groups 里写入 MetaCyc 通路分组
 #   （C58 实测 1051 个 PWY groups，9942 个反应成员关系）；BiGG 静态下载模型无 groups
 #   （iML1515 实测 0）——无 groups 时按契约返回 annotation_unavailable 兜底（不伪造通路）。

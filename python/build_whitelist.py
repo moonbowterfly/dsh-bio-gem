@@ -14,6 +14,10 @@ DIAMOND = os.environ.get(
 
 def build_rxn_fasta(out_fa, out_map=None, min_size=100):
     """聚合 rxn/ 非空文件（文件名=反应 ID）→ 序列 fasta + mapping。返回 (seqs, files_used)。"""
+    if not SEQDB or not os.path.isdir(os.path.join(SEQDB, "rxn")):
+        raise RuntimeError(
+            "GEM_GAPSEQ_DB 未配置或无效：构建白名单需要 gapseq 序列库目录"
+            "（<db>/Bacteria，内含 rxn/ 子目录）")
     rxn_dir = os.path.join(SEQDB, "rxn")
     n_seq = 0
     n_file = 0
@@ -120,8 +124,7 @@ if __name__ == "__main__":
     import json
     fa = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
         os.path.expanduser("~"), ".dsh", "dsh-bio-gem", "whitelist", "rxn_all.fa")
-    if not SEQDB or not os.path.isdir(os.path.join(SEQDB, "rxn")):
-        sys.exit("GEM_GAPSEQ_DB 未设置或无效：请指向 gapseq 序列库目录（<db>/Bacteria，内含 rxn/ 子目录）")
+    # SEQDB 有效性由 build_rxn_fasta 统一守卫（生产调用链同样受控）
     out_dir = os.path.dirname(fa) or "."
     os.makedirs(out_dir, exist_ok=True)
     map_p = os.path.join(out_dir, "rxn_map.tsv")

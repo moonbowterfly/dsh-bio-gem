@@ -1,11 +1,11 @@
-# double_knockout.py — 阶段C-C2 双敲 v1（合成致死预测，L2 非平凡）
+# double_knockout.py — 双敲 v1（合成致死预测，L2 非平凡）
 # 候选池（预算可控）：① GPR 结构先验——纯 or 型且恰 2 基因的反应 = 穷尽型同工酶对（廉价必做）；
 #   ② FVA 预筛活性反应关联基因中"共享反应"的基因对（复用 essential_scan.prescreen_candidates +
 #   scan_essentiality；全扫受 max_pairs 预算上限，默认 5000，超限截断+报告）。
 # 判定：单敲双活（>EPS）且双敲死（<=EPS）→ 合成致死对。单敲生长值按对惰性计算并缓存。
 # 假设声明（方案文件要求，内置于输出与 description）：细菌双敲验证率无大规模实验数据支撑，
 #   本结果=假设生成，供实验设计参考非结论。
-# 退化护栏（阶段 A/B 教训）：wt<=EPS（介质下不生长）→ 不扫描不登记账本，degenerate:true + 介质适配提示。
+# 退化护栏（实测教训）：wt<=EPS（介质下不生长）→ 不扫描不登记账本，degenerate:true + 介质适配提示。
 import os
 import re
 import sys
@@ -70,7 +70,7 @@ def double_knockout(model_path, medium=None, max_pairs=5000, export_csv=None,
     if out["degenerate"]:
         out["degenerate_note"] = (f"wt_growth={wt}<=EPS：被测模型在指定介质下不生长，双敲判定无意义，"
                                   "未扫描、未登记账本。提示：内置介质预设为根瘤菌科（C58）调校，"
-                                  "非根瘤菌模型需先做介质适配（阶段B-B3 molybdate 教训）。")
+                                  "非根瘤菌模型需先做介质适配（molybdate 介质适配教训）。")
         try:
             from benchmark import medium_adaptation_hints
             out["medium_adaptation_hints"] = medium_adaptation_hints(model_path, medium)

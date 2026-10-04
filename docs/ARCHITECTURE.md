@@ -6,18 +6,15 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 
 硬性原则（沿袭 bio-genie）：**用户零手动安装、零自愈、通用化（不针对特定机器特化）、结论可溯源**。
 
-## 2. 决策记录（为什么这么设计）
+## 2. 关键设计取舍
 
-| 日期 | 决策 | 依据 |
+| 取舍 | 结论 | 依据 |
 |---|---|---|
-| 08-28 | 插件名 dsh-bio-gem；资产盘点：消费侧已就绪、补构建侧闭环 | 用户决策 |
-| 08-29 | 引擎路线：**任务门槛路由**（不是简单 auto）；落地节奏 **M1 CarveMe+补洞 → M2 gapseq WSL 桥 → M3 双引擎交叉** | 独立设计评估 + 实测（CarveMe AB 不生长=补洞是生存线；WSL 桥显著降级交付风险；Docker 非 WSL 替代）|
-| 08-29 | MVP 工具集：gem_build / gem_validate（G1G2G3 必做，G4 条件、G5 抽检）/ gem_gapfind（L1L2L3）/ gem_gapfill（L1L2 规则自动）/ gem_report（薄版模型卡）；**gem_essentiality 不进首版** | 消费侧 bio_gene_knockout 已存在，避免重复实现 |
-| 08-29 | 修正建议：弃 μ 判据用 FBA 通量判据；pyrodigal 注释前端降 backlog；测试矩阵首版收敛 C58+2 公开株 | 输出口径为 objective_value；默认输入是带注释基因组 |
+| 引擎路线 | **任务门槛路由**（不是简单 auto）；落地顺序 CarveMe+补洞 → gapseq WSL 桥 → 双引擎交叉 | 实测（CarveMe AB 不生长=补洞是生存线；WSL 桥显著降级交付风险；Docker 非 WSL 替代）|
+| MVP 工具集 | gem_build / gem_validate（G1G2G3 必做，G4 条件、G5 抽检）/ gem_gapfind（L1L2L3）/ gem_gapfill（L1L2 规则自动）/ gem_report（薄版模型卡）；gem_essentiality 不进首版 | 消费侧 bio_gene_knockout 已存在，避免重复实现 |
+| 判据口径 | 弃 μ 判据用 FBA 通量判据；pyrodigal 注释前端降 backlog；测试矩阵首版收敛 C58+2 公开株 | 输出口径为 objective_value；默认输入是带注释基因组 |
 
-**采纳原则**：外部分析缺实际环境上下文时，凡冲突处以实测与产品原则为准。
-
-## 3. 工具契约（21 工具 ↔ Python 层；21 op + build CLI）
+## 3. 工具契约（23 工具 ↔ Python 层；23 op + build CLI）
 
 | 工具 | Python 层 | 状态 |
 |---|---|---|
@@ -26,8 +23,8 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 | gem_gapfind | op gapfind（L1-L3 分级 + 跨引擎介质归一化）| ✅ 已完成 |
 | gem_gapfill | op gapfill（L1/L2 规则 + provenance）| ✅ 已完成 |
 | gem_phenotype | op phenotype_fix（表型回填迭代）| ✅ 已完成 |
-| gem_essentiality | op essential_scan（FVA 预筛 + 手工敲除；预测自动入账本）| ✅ P0 DONE |
-| gem_annotate | op annotate（官方优先 + pyrodigal）| ✅ P0 DONE |
+| gem_essentiality | op essential_scan（FVA 预筛 + 手工敲除；预测自动入账本）| ✅ 已完成 |
+| gem_annotate | op annotate（官方优先 + pyrodigal）| ✅ 已完成 |
 | gem_gapseq | op gapseq（WSL 原子四步，可选项）| ✅ 桥全通 |
 | gem_l3_fix | op l3_fix（L3 补洞：L3a 连通性 + L3b 白名单/BiGG；证据分级 + 预算闸门 + G6 回滚）| ✅ 已完成（C58 Arabinose 0→0.851）|
 | gem_report | op model_info（+ ledger_summary 基率摘要）| ✅ DONE |
@@ -42,20 +39,22 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 | gem_enrichment | op enrichment（必需基因通路富集：超几何+BH FDR；无注释 annotation_unavailable 兜底）| ✅ 已完成（C58 55 条 FDR 显著）|
 | gem_targets | op targets（靶点规范导出：11 字段锁定 schema；账本计数闭合；引物设计不做）| ✅ 已完成（258 行三类闭合）|
 | gem_precursor_scan | op precursor_scan（阻塞前体分析：基线通量→可生长即返「无阻塞」；不生长则逐前体移除测试定位阻塞点）| ✅ 2026-09-11（实测归因产出）|
+| gem_quality | op quality（模型质量报告：blocked/cyclic/GPR 覆盖等可分解审计）| ✅ 已完成 |
+| gem_sample | op sample（ACHR 通量采样；growth_floor 与边界声明）| ✅ 已完成 |
 
 > Python 分发器 `gem_ops.py` 共 **23 个 op**（annotate/benchmark/biomass_apply/biomass_inspect/double_knockout/enrichment/essential_scan/fluxscan/gapfill/gapfind/gapseq/l3_fix/ledger/media_resolve/model_info/phenotype_fix/precursor_scan/quality/sample/secretion/sensitivity/targets/validate）；`gem_build` 不经分发器，由 `build.py` CLI 直接调用（长任务，jobs.js 拉起）。
 >
-> **工具数（23）与 op 数（23）的关系**：不等且不是简单的 +1 —— `gem_biomass` 一个工具映射 `biomass_inspect` / `biomass_apply` 两个 op（工具 −1），而 `gem_build` 走 CLI 不占 op（工具 +1），两项相抵故数值相同。核验口径：`len(gem_ops.OPS)` 与 `grep -c 'ctx.tools.register(' src/tools.js`。
+> **工具数（23）与 op 数（23）**：数值恰好相同但并非恒等——`gem_biomass` 一个工具映射两个 op（`biomass_inspect` / `biomass_apply`），而 `gem_build` 走 CLI 不占 op，两项相抵。核验口径：`len(gem_ops.OPS)` 与 `grep -c 'ctx.tools.register(' src/tools.js`。
 
 > **precursor_scan 的判据取舍（勿回退）**：初版曾用「全开交换下逐前体 demand 能否净生产」的**绝对可达性**判据，在教科书模型 e_coli_core 上把 atp_c/accoa_c/nad_c/nadph_c 误报为「结构缺失」（辅因子有循环补给路径，稳态下不净生产 ≠ 网络不能供给），故否决。现行判据为**相对判断**：先测基线通量，可生长即直接返回「无阻塞」；不生长才逐前体做移除测试，由「移除后是否恢复通量」直接定义阻塞点。验证锚：toy 单点阻塞模型（精确命中）、e_coli_core（growable，零误报）、iNX1344_v3（infeasible_or_constrained，与 agent 手工探索结论一致）。
 
-> 其余工具层约定：附模型卡统一写入 `python/model_card.py`（lineage/verified_phenotypes/essential_genes/robustness v3）与往返保真自检 `python/roundtrip_check.py`；预测账本 `python/ledger.py`（一个模型一个账本：`~/.dsh/dsh-bio-gem/ledger/<模型名>.jsonl`，按模型 basename 分，显式 ledger_path 可覆盖；无参查询=聚合全局视图；旧全局 predictions.jsonl 已迁移为 legacy）。**生长/通量数值口径**：所有产出生长/通量数值的工具输出均带 `units: mmol/gDW/h` 与单点 FBA 声明；条件间通量对比一律走 gem_fluxscan 区间分离判定（overlap=伪影禁止引用）。
+> 其余工具层约定：附模型卡统一写入 `python/model_card.py`（lineage/verified_phenotypes/essential_genes/robustness v3）与往返保真自检 `python/roundtrip_check.py`；预测账本 `python/ledger.py`（一个模型一个账本：`~/.dsh/dsh-bio-gem/ledger/<模型名>.jsonl`，按模型 basename 分，显式 ledger_path 可覆盖；无参查询=聚合全局视图；旧全局 predictions.jsonl 已迁移为 legacy）。**生长/通量数值口径**：所有产出生长/通量数值的工具输出均带 `units` 声明——归一化 biomass 反应（产物系数=1）的生长值为 `1/h`（比生长速率 μ）；一般反应通量为 `mmol/gDW/h`。另带单点 FBA 声明；条件间通量对比一律走 gem_fluxscan 区间分离判定（overlap=伪影禁止引用）。
 
-## 4. 引擎路线（M1→M2→M3）
+## 4. 引擎路线（三个阶段）
 
-- **M1（已完成 08-29，C58 实测）**：CarveMe 纯 Windows（独立 venv ~/.dsh/dsh-bio-gem/venv-carveme + diamond PATH 注入）。输入（protein.faa）→ carve -g M9（54s）→ 精确 M9 介质（media_db 提取）G3 PASS（C58 测 0.782）→ 用户目标介质 resolve（跨引擎自然名）→ G3 FAIL 时 L1/L2 规则补洞 → 模型卡。**CarveMe 模型实测：M9 可生长；AB 目标介质 FAIL 且为 L3 内部路径（L1/L2 规则不可修）——诚实报告为已知边界（研究设计既有结论：CarveMe M9 补洞局限）。**
-- **M2（2026-08-29 起）**：gapseq WSL2 桥（`python/gapseq_wsl.py`）。能力探测四件套（wsl/发行版/gapseq 版本/序列库注册 up-to-date——防假已装 UniProt 灾难）；新版 wsl.exe 输出 UTF-8（旧版 UTF-16LE，双解码兼容）；doall 哨兵文件轮询（30-60min，每 2min 进度 + 日志尾部旁观）；产物拷回 → 目标介质验证（AB 自然名）→ L1/L2 补洞闭环 → 模型卡。gem_build `engine` 参数（carveme|gapseq）+ 60min 超时。分发时采用**私有发行版**（wsl --import 自包含 bundle：R+gapseq+序列库 v1.5+哈希校验，版本钉死）。任务分步化（draft/build/transport/fill/adjust 每步落盘 → 断点续跑）待做。
-- **M3**：双引擎交叉验证，产出**分歧清单**（两引擎不一致反应/基因 = 低置信区，需文献/实验校验）而非平均；可选集成 gemsembler（先验证成熟度）；所有比对按**反应级等价类**而非基因级（引擎 GPR 粒度不同）。
+- **阶段一 · CarveMe 纯 Windows（已完成，C58 实测）**：（独立 venv ~/.dsh/dsh-bio-gem/venv-carveme + diamond PATH 注入）。输入（protein.faa）→ carve -g M9（54s）→ 精确 M9 介质（media_db 提取）G3 PASS（C58 测 0.782）→ 用户目标介质 resolve（跨引擎自然名）→ G3 FAIL 时 L1/L2 规则补洞 → 模型卡。**CarveMe 模型实测：M9 可生长；AB 目标介质 FAIL 且为 L3 内部路径（L1/L2 规则不可修）——诚实报告为已知边界（研究设计既有结论：CarveMe M9 补洞局限）。**
+- **阶段二 · gapseq WSL2 桥（2026-08-29 起）**：（`python/gapseq_wsl.py`）。能力探测四件套（wsl/发行版/gapseq 版本/序列库注册 up-to-date——防假已装 UniProt 灾难）；新版 wsl.exe 输出 UTF-8（旧版 UTF-16LE，双解码兼容）；doall 哨兵文件轮询（30-60min，每 2min 进度 + 日志尾部旁观）；产物拷回 → 目标介质验证（AB 自然名）→ L1/L2 补洞闭环 → 模型卡。gem_build `engine` 参数（carveme|gapseq）+ 60min 超时。分发时采用**私有发行版**（wsl --import 自包含 bundle：R+gapseq+序列库 v1.5+哈希校验，版本钉死）。任务分步化（draft/build/transport/fill/adjust 每步落盘 → 断点续跑）待做。
+- **阶段三 · 双引擎交叉验证**：，产出**分歧清单**（两引擎不一致反应/基因 = 低置信区，需文献/实验校验）而非平均；可选集成 gemsembler（先验证成熟度）；所有比对按**反应级等价类**而非基因级（引擎 GPR 粒度不同）。
 
 ## 5. 验证关卡规格（产品化 + G0）
 
@@ -70,8 +69,8 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 | G6 | ATP 泄漏检测（全关交换后 ATP demand 应≈0）| ✅ | leak ≤0.01 判 PASS；ATP 解析走 id→name→formula 三级回退（跨 ID 体系）|
 
 **G0 的由来（2026-09-10 实测）**：MetaCyc 风格 id 的公开模型（iNX1344_v3）上，
-`gem_gapfind` 报 5 个 L3「内部通路缺口」，实为 biomass 前体未映射所致——agent 为逐个
-证伪手写 cobra 代码 18 次。现 `gem_validate` 在 G1 之前输出 `g0`，`gem_gapfind` 返回
+`gem_gapfind` 报 5 个 L3「内部通路缺口」，实为 biomass 前体未映射所致——逐个
+证伪需手写 cobra 代码，成本高。现 `gem_validate` 在 G1 之前输出 `g0`，`gem_gapfind` 返回
 `coherence_warning` + `interpretation_guard`，把该结论前置给 agent。
 
 > ⚠️ **G0 判据的取舍（勿回退）**：曾试过「biomass 元素配平」与「前体可达性（demand 逐前体
@@ -87,13 +86,13 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 
 - **L1 缺交换**：培养基成分表 vs 模型 EX_ 列表的集合差 → 修复=补 EX_ 反应（完善环境定义，最安全）
 - **L2 缺转运**：e0↔c0 区室连通性（代谢物在胞外存在但无转运反应入胞）→ 修复=补转运（GPR 可空，标注未表征）
-- **L3 内部路径**：底物有交换+转运却无法达中心代谢 → 需文献反应（M1 报告清单，不自动补）
+- **L3 内部路径**：底物有交换+转运却无法达中心代谢 → 需文献反应（补洞报告清单，不自动补）
 
 已知规律（P1 实测）：多数"不能利用某碳源"缺口是 L1/L2 而非 L3。
 **2026-09-11 补充**：L3 清单须与 G0 一起解读——模型数据质量有问题时 L3 多为症状
 （`find_gaps` 返回值已内置 `coherence_warning` 与 `interpretation_guard`）。
 
-**防过补四闸门**：分级规则优先于 MILP（M1 不做 MILP）；新增反应数封顶（max_add=20）；逐条 provenance 打标（来源/原因/是否借自模板）；修复后强制重验 G3 + 生长值合理性上限告警（>1.0 时 WARN 过补嫌疑）。
+**防过补四闸门**：分级规则优先于 MILP；新增反应数封顶（max_add=20）；逐条 provenance 打标（来源/原因/是否借自模板）；修复后强制重验 G3 + 生长值合理性上限告警（>1.0 时 WARN 过补嫌疑）。
 
 ## 7. 模型卡（sidecar JSON，与 SBML 同目录同名 .card.json）
 
@@ -105,9 +104,9 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 ```
 写盘用 cobra.io.write_sbml_model（cobra 0.32.1 无 Model.save_model——坑位记档）。
 
-## 8. 后台任务（M1 基建，约 30% 工程量）
+## 8. 后台任务（基建）
 
-job 化 + 进度事件（粒度 ≤5s）+ 分步 checkpoint（每步落盘，可断点续跑）+ 结果可重入。引擎无关，M2 gapseq 直接复用。
+job 化 + 进度事件（粒度 ≤5s）+ 分步 checkpoint（每步落盘，可断点续跑）+ 结果可重入。引擎无关，gapseq 引擎直接复用。
 
 ## 9. 与 bio-genie 衔接
 
@@ -122,7 +121,7 @@ job 化 + 进度事件（粒度 ≤5s）+ 分步 checkpoint（每步落盘，可
 - 静态 Cordis `inject` 只声明 `tools`、`skills`；`webServer` 通过 `ctx.inject(['webServer'], cb)` 动态等待。无 webServer 时仍照常注册 23 个 `gem_*` 工具和 gem-expert skill；服务出现后才注册两条路由，并在约 8 秒后后台预热一次 status 缓存。gapseq 先做 `wsl.exe -l -q` 发行版预检，再用固定只读版本命令；子进程 stdin 使用 pipe 并立即关闭，避免 WSL 因 `stdin=ignore` 慢启动。gem 不注册浏览器设置入口，一级入口和五态 UI 由 BioGenie 唯一拥有。
 - 本批严格只读：不实现 job API、安装/删除、配置 schema、自动修复或跨插件命令执行。
 
-## 10. 验收（M1 最小可用判定线）
+## 10. 验收（最小可用判定线）
 
 零手动干预下：**基因组进 → 四个消费工具（FBA/必需性/包络线/面板）不经修改即可用的 SBML 出**，且模型在声明培养基上生长为正；C58 端到端演示通过（build→面板可见→FBA 可跑→必需性可跑）；模型卡齐全（引擎/版本/补洞记录/验证结果，同输入重跑一致）；5-6 Mb 基因组 p95 ≤ 20 min。
 
@@ -133,7 +132,7 @@ job 化 + 进度事件（粒度 ≤5s）+ 分步 checkpoint（每步落盘，可
 | 项目 | C58 | iNX1344_v4 |
 |---|---|---|
 | model_info（读模+摘要） | 6.6s | 3.7s |
-| validate G1-G6 | 7.9s（G3 PASS 0.519981） | 3.7s（G3 WARN，介质层不兼容见 M5） |
+| validate G1-G6 | 7.9s（G3 PASS 0.519981） | 3.7s（G3 WARN，介质层不兼容） |
 | essential_scan 全量（FVA 预筛+手工敲除） | ~50s（FVA 32.3s + 敲除 16.8s，818 候选） | ~30s（FVA 11.9s + 敲除 16.8s，1066 候选） |
 | fluxscan 1 条件（读模+FBA+FVA+pFBA） | ~31s（FVA 24-42s 为主） | ~14s（FVA ~12s） |
 | fluxscan 2 条件 1 对 | 63-72s | 28.5s |

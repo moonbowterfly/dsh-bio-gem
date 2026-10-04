@@ -19,8 +19,9 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
 
+const DSH_ROOT = process.env.DSH_HOME || join(homedir(), '.dsh')
 const PY = process.env.GEM_PYTHON
-  || join(homedir(), '.dsh', 'dsh-bio-genie', 'python-env', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
+  || join(DSH_ROOT, 'dsh-bio-genie', 'python-env', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
 const REPO = join(fileURLToPath(new URL('.', import.meta.url)), '..')
 const PYDIR = join(REPO, 'python')
 
@@ -45,8 +46,7 @@ function findAsset(relativeCandidates) {
 
 const C58 = findAsset(['models/gapseq_C58/C58.xml'])
 const C58P1 = findAsset(['models/gapseq_C58/C58_P1.xml'])
-// 表型表用仓库内 fixture：曾硬编码临时目录下的文件，
-// 该文件被 temp 清理删除后断言会以「数据缺失」伪装成「断言失败」（2026-10-01 实测）。
+// 表型表用仓库内 fixture：不依赖外部临时文件（临时文件缺失时断言会以「数据缺失」伪装成「断言失败」）。
 const PHENOTYPE_TABLE = join(REPO, 'test', 'fixtures', 'phenotype-table.tsv')
 const INX4 = findAsset(['models/iNX1344_v4.xml'])
 // FAA 是 build 产物（独立于项目模型目录）：显式 root 模式下在 root 内找，否则用默认路径

@@ -293,7 +293,7 @@ def apply_biomass(model_path, biomass_profile, medium=None, phenotype_table=None
         "out": out, "units": GROWTH_UNITS,
         "before_after": {
             "growth": {"before": growth_b, "after": growth_a, "units": GROWTH_UNITS,
-                       # 阶段A-M4 口径声明（只增）
+                       # 口径声明（只增）
                        "point_value_note": "单点 FBA 值，非解空间硬结论；条件对比请用 gem_fluxscan 区间分离判定"},
             "phenotype": {"before": {"matched": ph_b.get("matched"), "total": ph_b.get("total")},
                           "after": {"matched": ph_a.get("matched"), "total": ph_a.get("total")}},
