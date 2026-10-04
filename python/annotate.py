@@ -75,7 +75,7 @@ def nucleotide_to_protein(fna_path, out_faa=None, prefer_existing=True):
     base = os.path.splitext(os.path.basename(fna_path))[0]
     if out_faa is None:
         out_faa = os.path.join(d, base + ".gem_annot.faa")
-    # P2-8 修复（2026-08-31 LBA9402 会话首调真实事故）：输出目录不存在直接 FileNotFoundError
+    # 输出目录不存在时自动创建（避免 FileNotFoundError）
     out_dir = os.path.dirname(os.path.abspath(out_faa)) or "."
     os.makedirs(out_dir, exist_ok=True)
 
