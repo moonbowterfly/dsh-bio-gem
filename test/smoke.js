@@ -437,9 +437,11 @@ async function main() {
   const tmpSecDir = mkdtempSync(join(tmpdir(), 'gem-smoke-sec-'))
   const tmpSecLedger = join(tmpSecDir, 'predictions.jsonl')
   if (HAS_MAIN) {
+    const secExportDir = join(tmpSecDir, 'nested-out')
     const secC58 = await runPy('gem_ops.py', {
       op: 'secretion',
-      args: { model: C58, medium: { medium_name: 'AB' }, ledger_path: tmpSecLedger },
+      args: { model: C58, medium: { medium_name: 'AB' }, ledger_path: tmpSecLedger,
+              export_csv: join(secExportDir, 'sec_full.csv') },
     })
     check('secretion: C58 真实谱（85 可分泌，边界声明内置，H2O/CO2 可行）',
       secC58?.result?.secretable_count === 85
@@ -450,6 +452,18 @@ async function main() {
     check('secretion: 账本登记（85 条 type=secretion，幂等）',
       secC58?.result?.ledger_registration?.appended === 85,
       JSON.stringify(secC58?.result?.ledger_registration))
+    try {
+      const secCsvPath = join(secExportDir, 'sec_full.csv')
+      const secCsvText = readFileSync(secCsvPath, 'utf8')
+      const secMeta = JSON.parse(readFileSync(secCsvPath + '.meta.json', 'utf8'))
+      check('secretion: export_csv 自动建父目录 + 纯数据 CSV + meta 侧车（2026-10-05 修）',
+        secCsvText.replace(/^\uFEFF/, '').startsWith('rxn,')
+        && /未考虑毒性/.test(secMeta.boundary_note || '')
+        && secC58?.result?.export_csv_meta === secCsvPath + '.meta.json',
+        JSON.stringify({ head: secCsvText.slice(0, 40), metaOK: Boolean(secMeta.boundary_note) }))
+    } catch (e) {
+      check('secretion: export_csv 自动建父目录 + 纯数据 CSV + meta 侧车（2026-10-05 修）', false, String(e))
+    }
   } else {
     skip('secretion: C58 真实谱', 'C58 未找到')
   }
@@ -481,18 +495,30 @@ async function main() {
   } else {
     skip('double_knockout: 退化护栏（v4）', 'iNX1344_v4.xml 未找到')
   }
+  {
+    // 导出格式探针（2026-10-05）：直调 _export_csv——纯数据 CSV + mkdir -p + meta 侧车
+    const dkProbe = await runPy(join('..', 'test', 'dk_export_probe.py'),
+      { csv_path: join(tmpSecDir, 'dk-nested', 'dk.csv') }, true)
+    check('double_knockout: export_csv 纯数据表（无注释行）+ mkdir -p + meta 侧车（2026-10-05 修）',
+      dkProbe?.csv_exists === true && /^gene_a,/.test(dkProbe?.first_line || '')
+      && dkProbe?.meta_note === 'SMOKE_NOTE_测试假设声明'
+      && String(dkProbe?.meta_path_field || '').endsWith('dk.csv.meta.json'),
+      JSON.stringify(dkProbe))
+  }
 
   // 15) 阶段C-C3：gem_enrichment 通路富集（真实 C58 ~3s + 无注释兜底）
   if (HAS_MAIN && ledgerReady(C58)) {
     const enr = await runPy('gem_ops.py', {
-      op: 'enrichment', args: { model: C58, export_csv: join(tmpSecDir, 'enr.csv') },
+      op: 'enrichment', args: { model: C58, export_csv: join(tmpSecDir, 'enr-nested', 'enr.csv') },
     })
     check('enrichment: C58 真实富集（通路注释可用，388 通路，FDR 字段存在，肽聚糖/TCA 类核心通路在列）',
       enr?.result?.annotation_unavailable === false
       && enr?.result?.pathways_tested === 388
       && (enr?.result?.results ?? []).every((r) => typeof r.p_value === 'number' && typeof r.fdr === 'number')
-      && (enr?.result?.results ?? []).some((r) => r.pathway.includes('PEPTIDOGLYCANSYN')),
-      JSON.stringify({ tested: enr?.result?.pathways_tested, sig: enr?.result?.significant_count_fdr05 }))
+      && (enr?.result?.results ?? []).some((r) => r.pathway.includes('PEPTIDOGLYCANSYN'))
+      && existsSync(join(tmpSecDir, 'enr-nested', 'enr.csv')),
+      JSON.stringify({ tested: enr?.result?.pathways_tested, sig: enr?.result?.significant_count_fdr05,
+                       csvExists: existsSync(join(tmpSecDir, 'enr-nested', 'enr.csv')) }))
   } else if (HAS_MAIN) {
     skip('enrichment: C58 真实富集', `默认账本缺失/为空（${join(LEDGER_DIR, 'C58.jsonl')}）——富集输入基因来自账本`)
   } else {

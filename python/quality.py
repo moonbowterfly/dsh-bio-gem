@@ -14,6 +14,7 @@ from cobra.flux_analysis import fastcc, find_blocked_reactions
 
 from gapfind import expand_medium, resolve_medium
 from silentio import silent_read_sbml
+from fsutil import ensure_parent_dir
 
 
 EX_PREFIXES = ("EX_", "DM_", "SK_")
@@ -357,6 +358,7 @@ def _connectivity(model):
 
 def _write_export_csv(path, records):
     """Write long-form complete lists; JSON samples remain deliberately capped."""
+    path = ensure_parent_dir(path)
     with open(path, "w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=("check", "item_id", "detail"))
         writer.writeheader()

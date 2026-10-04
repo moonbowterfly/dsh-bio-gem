@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from silentio import silent_read_sbml
 from gapfind import expand_medium, resolve_medium, build_ex_index, match_ex
 from validate import parse_formula
+from fsutil import ensure_parent_dir
 
 EX_PREFIX = ("EX_", "DM_", "SK_")
 DEFAULT_FRACTION = 0.9999
@@ -168,6 +169,7 @@ def _pair_result(a_name, b_name, data_a, data_b, scope, tol, only_diff):
 
 def _export_csv(path, model_reactions, pair_results):
     """全量 CSV：每行 = 条件对 × 反应（双侧区间/点值/判定）。返回 (rows, bytes)。"""
+    path = ensure_parent_dir(path)
     names = {r.id: r for r in model_reactions}
     rows = 0
     with open(path, "w", newline="", encoding="utf-8-sig") as f:

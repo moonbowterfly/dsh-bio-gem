@@ -11,6 +11,7 @@ from cobra.util.solver import linear_reaction_coefficients
 
 from gapfind import expand_medium, resolve_medium
 from silentio import silent_read_sbml
+from fsutil import ensure_parent_dir
 
 
 EX_PREFIXES = ("EX_", "DM_", "SK_")
@@ -219,6 +220,7 @@ def sample_fluxes(
     growth_summary = _describe(samples[growth_reaction.id].to_numpy())
 
     if export_csv:
+        export_csv = ensure_parent_dir(export_csv)
         samples.to_csv(export_csv, index=False)
 
     if growth_floor_fraction is None:

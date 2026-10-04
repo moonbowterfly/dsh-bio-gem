@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from silentio import silent_read_sbml
 from validate import parse_formula
 from essential_scan import setup_model_medium, scan_essentiality
+from fsutil import ensure_parent_dir
 
 BIOMASS_SCALES = [0.75, 1.0, 1.25]
 GAM_GRID = [1, 5, 10, 20, 30, 40, 50]
@@ -421,6 +422,7 @@ def sensitivity(model_path, medium=None, biomass_scales=None, gam_grid=None,
 
 
 def _export_csv(path, grid, comp_rows, drift, stability):
+    path = ensure_parent_dir(path)
     rows = 0
     with open(path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)

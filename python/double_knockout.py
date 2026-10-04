@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from silentio import silent_read_sbml
 from essential_scan import setup_model_medium, scan_essentiality, EPS
+from fsutil import ensure_parent_dir, write_meta_sidecar
 
 ASSUMPTION_NOTE = "细菌双敲验证率无大规模实验数据支撑，本结果=假设生成，供实验设计参考非结论"
 
@@ -174,16 +175,35 @@ def double_knockout(model_path, medium=None, max_pairs=5000, export_csv=None,
 
 
 def _export_csv(path, results, out):
+    """纯数据 CSV（标准表头，机器可读）+ 旁车 meta。
+
+    2026-10-05 修：此前把 assumption_note 写成首行 `"# assumption", note` 双字段行——
+    pandas/自动解析会把它当表头或脏行（E2E 实测 agent 需专门跳过 '#' 行）。
+    现改为：CSV 保持纯表；说明与参数写入 <path>.meta.json（返回体 export_csv_meta）。
+    """
+    path = ensure_parent_dir(path)
     n = 0
     with open(path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
-        w.writerow(["# assumption", out["assumption_note"]])
         w.writerow(["gene_a", "gene_b", "single_a_growth", "single_b_growth",
                     "double_growth", "rationale", "source"])
         for r in results:
             w.writerow([r["pair"][0], r["pair"][1], r["single_a_growth"],
                         r["single_b_growth"], r["double_growth"], r["rationale"], r["source"]])
             n += 1
+    meta = write_meta_sidecar(path, {
+        "assumption_note": out.get("assumption_note"),
+        "model": out.get("model"),
+        "medium": out.get("medium"),
+        "medium_preset": out.get("medium_preset"),
+        "wt_growth": out.get("wt_growth"),
+        "units": out.get("units"),
+        "eps": out.get("eps"),
+        "max_pairs": out.get("max_pairs"),
+        "pairs_found": out.get("pairs_found"),
+    })
+    if meta:
+        out["export_csv_meta"] = meta
     return n
 
 

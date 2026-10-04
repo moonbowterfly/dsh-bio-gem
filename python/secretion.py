@@ -18,6 +18,7 @@ from silentio import silent_read_sbml
 from gapfind import build_ex_index, ex_index_is_boundary
 from essential_scan import setup_model_medium
 from sensitivity import find_biomass_gam
+from fsutil import ensure_parent_dir, write_meta_sidecar
 
 EPS = 1e-6
 GROWTH_FRACTIONS = [0.25, 0.5, 0.75, 0.9, 0.99, 1.0]
@@ -151,10 +152,15 @@ def secretion(model_path, medium=None, fractions=None, export_csv=None,
 
 
 def _export_csv(path, rows, out):
+    """纯数据 CSV（标准表头）+ 旁车 meta。
+
+    2026-10-05 修：boundary_note 移出 CSV 首行（原为 `"# boundary_note", note` 双字段行，
+    pandas/自动解析会当表头或脏行）→ 写入 <path>.meta.json（返回体 export_csv_meta）。
+    """
+    path = ensure_parent_dir(path)
     n = 0
     with open(path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
-        w.writerow(["# boundary_note", out["boundary_note"]])
         w.writerow(["rxn", "met_id", "name", "feasible", "max_prod", "growth_at_max",
                     "fraction", "prod"])
         for r in rows:
@@ -162,6 +168,17 @@ def _export_csv(path, rows, out):
                 w.writerow([r["rxn"], r["met_id"], r["name"], int(r["feasible"]),
                             r["max_prod"], r["growth_at_max"], e["fraction"], e["prod"]])
                 n += 1
+    meta = write_meta_sidecar(path, {
+        "boundary_note": out.get("boundary_note"),
+        "model": out.get("model"),
+        "medium": out.get("medium"),
+        "medium_preset": out.get("medium_preset"),
+        "units": out.get("units"),
+        "growth_fractions": out.get("growth_fractions"),
+        "wt_growth": out.get("wt_growth"),
+    })
+    if meta:
+        out["export_csv_meta"] = meta
     return n
 
 

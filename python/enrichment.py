@@ -13,6 +13,7 @@ from math import comb
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from silentio import silent_read_sbml
+from fsutil import ensure_parent_dir
 
 NOTE_UNAVAILABLE = ("模型无 SBML groups（通路）注释。可补途径：①用 gapseq 重建（自带 MetaCyc pathway "
                     "groups）；②从 BiGG API 取模型 subsystem 后注入 groups；③按 ec-code 注释做粗分类。")
@@ -153,6 +154,7 @@ def enrichment(model_path, gene_list=None, pathway_source=None, ledger_path=None
         "timing_seconds": round(time.time() - t0, 1),
     }
     if export_csv:
+        export_csv = ensure_parent_dir(export_csv)
         with open(export_csv, "w", newline="", encoding="utf-8-sig") as f:
             w = csv.writer(f)
             w.writerow(["pathway", "genes_hit_count", "genes_hit", "background_hit",

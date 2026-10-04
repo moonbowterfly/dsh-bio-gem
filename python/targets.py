@@ -13,6 +13,8 @@ import json
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from fsutil import ensure_parent_dir
+
 SCHEMA_FIELDS = ["target_id", "type", "genes", "met_ids", "condition", "rationale",
                  "evidence_tier", "status", "growth_or_maxprod", "source", "exported_at"]
 TYPE_ORDER = ["essentiality", "synthetic_lethal", "secretion"]
@@ -112,6 +114,7 @@ def targets(model_path=None, types=None, condition=None, ledger_path=None,
         d = os.path.join(os.path.expanduser("~"), ".dsh", "dsh-bio-gem", "exports")
         os.makedirs(d, exist_ok=True)
         export_path = os.path.join(d, f"targets_{time.strftime('%Y%m%d_%H%M%S')}.{export_format}")
+    export_path = ensure_parent_dir(export_path)
     if export_format == "json":
         with open(export_path, "w", encoding="utf-8") as f:
             json.dump(out_rows, f, ensure_ascii=False, indent=1)
