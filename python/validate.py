@@ -196,7 +196,7 @@ class Validator:
             "growth_all_closed": round(g_closed, 6),
             "ratio_vs_reference": round(ratio, 4) if ratio is not None else None,
             "checks": {"medium>0": ok_grow, "no_carbon==0": ok_noc, "closed==0": ok_closed},
-            # 阶段A-M4 口径声明（只增）：单点 FBA 值非硬结论
+            # 口径声明（只增）：单点 FBA 值非硬结论
             "units": "1/h",
             "point_value_note": "单点 FBA 值，非解空间硬结论；条件对比请用 gem_fluxscan 区间分离判定",
         }
@@ -312,7 +312,7 @@ class Validator:
                 matched += 1
             results.append({"substrate": sub, "published": int(pub), "predicted": int(pred),
                             "growth": round(g, 6), "exchange": exid or None, "match": bool(ok),
-                            # 阶段A-M4 口径声明（只增）：每底物 growth 为单点 FBA 值
+                            # 口径声明（只增）：每底物 growth 为单点 FBA 值
                             "units": "1/h",
                             "point_value_note": "单点 FBA 值，非解空间硬结论；条件对比请用 gem_fluxscan 区间分离判定"})
         rep = {

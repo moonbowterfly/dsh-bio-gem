@@ -422,7 +422,7 @@ def l3_fix(model_path, medium=None, substrates=None, out=None,
         g = _growth_sole(m, resolved_med, exid)
         if exid and exid in m.reactions and g < 1e-6:
             l3.append({"substrate": sub, "exchange": exid, "growth_sole_before": round(g, 6),
-                       # 阶段A-M4 口径声明（只增）
+                       # 口径声明（只增）
                        "units": "1/h",
                        "point_value_note": "单点 FBA 值，非解空间硬结论；条件对比请用 gem_fluxscan 区间分离判定"})
 

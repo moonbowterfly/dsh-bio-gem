@@ -1,4 +1,4 @@
-# targets.py — 阶段C-C4 靶点清单规范导出（下游接口面；菌种通用）
+# targets.py — 靶点清单规范导出（下游接口面；菌种通用）
 # 汇总来源：账本（essentiality/synthetic_lethal/secretion 预测；essential 默认读账本不重扫）。
 # 输出 schema（锁定，每行 11 字段）：target_id/type/genes/met_ids/condition/rationale/
 #   evidence_tier/status/growth_or_maxprod/source/exported_at。

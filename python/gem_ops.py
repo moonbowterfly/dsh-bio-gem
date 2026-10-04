@@ -69,7 +69,7 @@ def op_model_info(args):
             repl["_".join(parts[:2])] += 1
         else:
             repl["other"] += 1
-    # 阶段A-M3: prediction ledger 基率摘要（文件不存在 -> {total: 0}；ledger_path 可覆盖默认账本）
+    # prediction ledger 基率摘要（文件不存在 -> {total: 0}；ledger_path 可覆盖默认账本）
     # P1-3：传 model=path 让摘要给 by_model 分布 + own_model_entries（防「本模型账本 N 条」误报）
     ledger_summary, ledger_context = None, None
     try:
@@ -234,7 +234,7 @@ def op_media_resolve(args):
         "medium_preset": preset,
         "unresolved": unresolved,
         "model": model,
-        # 阶段B-B1 附加（只增）：两级策略②启用标注 + 规范展示名
+        # 附加（只增）：两级策略②启用标注 + 规范展示名
         "boundary_style": boundary_style,
     }
     if boundary_style:
@@ -263,7 +263,7 @@ def op_l3_fix(args):
 
 
 # ---------------------------------------------------------------------------
-# op: fluxscan — 阶段A-M1 通量区间制（FVA 区间 + pFBA 点值 + 条件对区间分离判定）
+# op: fluxscan — 通量区间制（FVA 区间 + pFBA 点值 + 条件对区间分离判定）
 # 语义锁定：overlap = 求解器伪影禁止引用；判定公式见 fluxscan.judge_interval（单测锁定）
 # ---------------------------------------------------------------------------
 def op_fluxscan(args):
@@ -282,7 +282,7 @@ def op_fluxscan(args):
 
 
 # ---------------------------------------------------------------------------
-# op: sensitivity — 阶段A-M2 结构性灵敏度（GAM×biomass 网格 22 组合 + 必需性重扫 + 单组分漂移）
+# op: sensitivity — 结构性灵敏度（GAM×biomass 网格 22 组合 + 必需性重扫 + 单组分漂移）
 # action=probe 秒级只读（GAM 载体定位/组分计数）；缺省 full=22 组合全量（约 35-45min，长任务）
 # ---------------------------------------------------------------------------
 def op_sensitivity(args):
@@ -410,7 +410,7 @@ OPS["sensitivity"] = op_sensitivity
 
 
 # ---------------------------------------------------------------------------
-# op: ledger — 阶段A-M3 prediction ledger（list/query/update；只读/追加/更新，不删行）
+# op: ledger — prediction ledger（list/query/update；只读/追加/更新，不删行）
 # 默认账本 ~/.dsh/dsh-bio-gem/ledger/predictions.jsonl；ledger_path 可覆盖（测试用临时路径）
 # ---------------------------------------------------------------------------
 def op_ledger(args):
@@ -436,7 +436,7 @@ def op_ledger(args):
 
 
 # ---------------------------------------------------------------------------
-# op: benchmark — 阶段B-B1 通用基准对比（六关并列/生长/含边界介质回退/biomass 探针/必需性对比
+# op: benchmark — 通用基准对比（六关并列/生长/含边界介质回退/biomass 探针/必需性对比
 #     含退化护栏/表型/可复现性/账本 comparison_refs 回填；md 落盘可选）
 # ---------------------------------------------------------------------------
 def op_benchmark(args):
@@ -462,7 +462,7 @@ OPS["benchmark"] = op_benchmark
 
 
 # ---------------------------------------------------------------------------
-# op: secretion — 阶段C-C1 可分泌代谢物谱（production envelope 扫描；纯拓扑边界声明内置；
+# op: secretion — 可分泌代谢物谱（production envelope 扫描；纯拓扑边界声明内置；
 #     wt<=EPS 退化护栏不登记；type=secretion 账本登记幂等）
 # ---------------------------------------------------------------------------
 def op_secretion(args):
@@ -481,7 +481,7 @@ OPS["secretion"] = op_secretion
 
 
 # ---------------------------------------------------------------------------
-# op: double_knockout — 阶段C-C2 双敲 v1（合成致死；GPR 穷尽先验 + FVA 预筛全扫，max_pairs 预算；
+# op: double_knockout — 双敲 v1（合成致死；GPR 穷尽先验 + FVA 预筛全扫，max_pairs 预算；
 #     假设声明内置；wt<=EPS 退化护栏不登记；type=synthetic_lethal 账本登记幂等）
 # ---------------------------------------------------------------------------
 def op_double_knockout(args):
@@ -499,7 +499,7 @@ OPS["double_knockout"] = op_double_knockout
 
 
 # ---------------------------------------------------------------------------
-# op: enrichment — 阶段C-C3 必需基因通路富集（超几何单侧 + BH FDR；通路源=SBML groups
+# op: enrichment — 必需基因通路富集（超几何单侧 + BH FDR；通路源=SBML groups
 #     [gapseq MetaCyc PWY]；无注释模型按契约 annotation_unavailable 兜底；不登记账本）
 # ---------------------------------------------------------------------------
 def op_enrichment(args):
@@ -516,7 +516,7 @@ OPS["enrichment"] = op_enrichment
 
 
 # ---------------------------------------------------------------------------
-# op: targets — 阶段C-C4 靶点清单规范导出（账本三类预测 -> 锁定 schema；供下游引物/编辑
+# op: targets — 靶点清单规范导出（账本三类预测 -> 锁定 schema；供下游引物/编辑
 #     工具直接输入；与账本计数闭合；引物/质粒设计本身不做）
 # ---------------------------------------------------------------------------
 def op_targets(args):

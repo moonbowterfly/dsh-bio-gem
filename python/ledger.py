@@ -1,5 +1,5 @@
-# ledger.py — 阶段A-M3 prediction ledger（预测账本，可追踪可实验兑现）
-# 文件: ~/.dsh/dsh-bio-gem/ledger/<模型名>.jsonl（一个模型一个账本，2026-08-31 用户决策）
+# ledger.py — prediction ledger（预测账本，可追踪可实验兑现）
+# 文件: ~/.dsh/dsh-bio-gem/ledger/<模型名>.jsonl（一个模型一个账本）
 #       ——默认账本按模型文件 basename 推导（model_ledger_path），显式 ledger_path 仍可覆盖；
 #       ——无 model 无 path 的查询/摘要 = 聚合所有模型账本（全局视图，by_model 分布保留）。
 # 迁移：旧全局 predictions.jsonl 已拆分为各模型账本（predictions.jsonl.legacy-20260831 保留备份，
@@ -42,7 +42,7 @@ def _norm_path(p):
 
 
 # ---------------------------------------------------------------------------
-# 账本文件解析：一个模型一个账本（2026-08-31 用户决策）
+# 账本文件解析：一个模型一个账本
 # ---------------------------------------------------------------------------
 def model_ledger_path(model_path):
     """默认账本 = ledger/<模型文件名去扩展名>.jsonl（一个模型一个账本）。"""

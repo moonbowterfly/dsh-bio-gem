@@ -39,7 +39,7 @@ def save_card(model_path, card):
 
 def _ensure_v2(card):
     """legacy 卡（build 直写，无 schema/lineage）即时迁移到 v2。
-    v3 卡（阶段A-M2 起，含 robustness 章节）视为已迁移，不降级。"""
+    v3 卡（含 robustness 章节）视为已迁移，不降级。"""
     if card.get("schema") in (SCHEMA, "v3") and "model_lineage" in card:
         return card
     card.setdefault("schema", SCHEMA)
@@ -165,7 +165,7 @@ def set_essential_genes(model_path, scan_result, model=None):
 
 
 def set_robustness(model_path, sensitivity_result):
-    """sensitivity 结果写入 card.robustness（阶段A-M2：schema v3 起步，向后兼容 v2 卡只增字段）。
+    """sensitivity 结果写入 card.robustness（schema v3 起步，向后兼容 v2 卡只增字段）。
     sensitivity_result: sensitivity() 返回（含 wt_growth_grid/stability/component_sensitivity/gam_carrier）。
     无 card 返回 None（不凭空造卡——纪律同 set_essential_genes）。"""
     card = load_card(model_path)
@@ -218,7 +218,7 @@ if __name__ == "__main__":
         assert back["verified_phenotypes"]["matched"] == 13
         assert back["essential_genes"]["count"] == 2
         assert back["essential_genes"]["genes"][0]["evidence_level"] == "high_confidence"
-        # 阶段A-M2：robustness 章节（v2→v3 只增字段）+ 无 card 不造卡
+        # robustness 章节（v2→v3 只增字段）+ 无 card 不造卡
         assert set_robustness(mp + ".nonexistent", {"wt_growth_grid": []}) is None
         c4 = set_robustness(mp, {"combinations": 22, "baseline_reproduced": True,
                                  "wt_growth_grid": [{"biomass": 1.0, "gam": 40.0, "growth": 0.519981,

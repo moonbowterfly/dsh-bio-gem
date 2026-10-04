@@ -12,7 +12,7 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 |---|---|---|
 | 引擎路线 | **任务门槛路由**（不是简单 auto）；落地顺序 CarveMe+补洞 → gapseq WSL 桥 → 双引擎交叉 | 实测（CarveMe AB 不生长=补洞是生存线；WSL 桥显著降级交付风险；Docker 非 WSL 替代）|
 | MVP 工具集 | gem_build / gem_validate（G1G2G3 必做，G4 条件、G5 抽检）/ gem_gapfind（L1L2L3）/ gem_gapfill（L1L2 规则自动）/ gem_report（薄版模型卡）；gem_essentiality 不进首版 | 消费侧 bio_gene_knockout 已存在，避免重复实现 |
-| 判据口径 | 弃 μ 判据用 FBA 通量判据；pyrodigal 注释前端降 backlog；测试矩阵首版收敛 C58+2 公开株 | 输出口径为 objective_value；默认输入是带注释基因组 |
+| 判据口径 | 弃 μ 判据用 FBA 通量判据；注释前端（pyrodigal）为可选兜底；回归矩阵覆盖 C58 与公开株 | 输出口径为 objective_value；默认输入是带注释基因组 |
 
 ## 3. 工具契约（23 工具 ↔ Python 层；23 op + build CLI）
 

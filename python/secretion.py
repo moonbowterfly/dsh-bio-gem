@@ -1,11 +1,11 @@
-# secretion.py — 阶段C-C1 可分泌代谢物谱（菌种通用）
+# secretion.py — 可分泌代谢物谱（菌种通用）
 # 候选 = 介质层两级策略导出的交换反应（build_ex_index：EX_ 型与 boundary 型模型都适用）。
 # 可分泌判定 = production envelope 扫描：固定生长分数 {0.25,0.5,0.75,0.9,0.99,1.0} 下产物交换最大化
 #   （强制 biomass 通量 >= fraction*wt，最大化交换反应的分泌方向通量）；
 #   任一分数 >0 且产物交换 > 1e-6 → 可分泌。
 # 边界声明（方案文件要求，内置于输出）：未考虑毒性/渗透压/调控，纯拓扑/线性规划结果。
 # 退化护栏（阶段 A/B 教训）：被测模型 wt<=EPS（介质下不生长，如 AB 预设对非根瘤菌科物种——
-#   阶段B-B3 molybdate 教训）→ 不扫描不登记账本，输出 degenerate:true + 介质适配提示。
+#   molybdate 介质适配经验）→ 不扫描不登记账本，输出 degenerate:true + 介质适配提示。
 import os
 import sys
 import csv
@@ -77,7 +77,7 @@ def secretion(model_path, medium=None, fractions=None, export_csv=None,
     if out["degenerate"]:
         out["degenerate_note"] = (f"wt_growth={wt}<=EPS：被测模型在指定介质下不生长，production envelope 无意义，"
                                   "未扫描、未登记账本。提示：内置介质预设为根瘤菌科（C58）调校，非根瘤菌模型需先做介质适配"
-                                  "（阶段B-B3 教训：iML1515 严格 AB 缺 molybdate）。")
+                                  "（经验：iML1515 严格 AB 缺 molybdate）。")
         try:
             from benchmark import medium_adaptation_hints
             out["medium_adaptation_hints"] = medium_adaptation_hints(model_path, medium)

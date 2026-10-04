@@ -1,4 +1,4 @@
-# sensitivity.py — 阶段A-M2 结构性灵敏度（把"模型不确定"量化）
+# sensitivity.py — 结构性灵敏度（把"模型不确定"量化）
 # 网格（全量，不抽样）: biomass 组分系数 ×{0.75, 1.0, 1.25} × GAM {1,5,10,20,30,40,50} = 21 扫点
 #   + 1 基准组合（biomass×1.0 且 GAM=原始值，不扰动）= 22 组合；每组合 wt growth + 必需性重扫
 #   （复用 essential_scan.setup_model_medium / scan_essentiality——M2 顺带工程改进）。
@@ -85,7 +85,7 @@ def find_biomass_gam(m):
         if role and abs(coeff) > 1.0 and role not in stub:
             stub[role] = met.id
             stub_coeffs[role] = coeff
-    # 阶段A-M5 适配（iNX1344_v4 探索结论）：H2O 角色的代谢物可能公式缺失（如 M00001_c
+    # 适配（iNX1344_v4 探索结论）：H2O 角色的代谢物可能公式缺失（如 M00001_c
     # formula=None），且其量级与 GAM 净水电解量（ADP 系数）一致——量级回退补判。
     if {"atp", "adp", "pi", "h"} <= set(stub) and "h2o" not in stub:
         gam_scale = abs(stub_coeffs["adp"])
@@ -240,7 +240,7 @@ def sensitivity(model_path, medium=None, biomass_scales=None, gam_grid=None,
     base_row["baseline"] = True
     grid.append(base_row)
     baseline_set = set(base_row["essential_genes"])
-    degenerate = base_row["growth"] <= EPS  # 阶段A-M5 发现：wt=0 时必需性判定退化（候选全判"必需"）
+    degenerate = base_row["growth"] <= EPS  # 实测：wt=0 时必需性判定退化（候选全判"必需"）
     if degenerate:
         log("[sens] WARN: 基准组合 wt_growth<=0（介质不可解析/模型不生长）——必需性判定退化，"
             "结果仅证明工具在该模型上跑通，essential 集无生物学意义")

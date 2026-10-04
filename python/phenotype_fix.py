@@ -92,7 +92,7 @@ def phenotype_fix(model_path, phenotype_table=None, medium=None, max_add=20, out
     except Exception:
         pass
     result["card_version"] = card_version
-    # 阶段A-M3: prediction ledger 自动登记（每底物一条 G4 结果；幂等去重；失败仅 WARN）
+    # prediction ledger 自动登记（每底物一条 G4 结果；幂等去重；失败仅 WARN）
     try:
         import ledger as _ledger
         from model_card import load_card as _load_card
