@@ -14,7 +14,7 @@ Genome-scale metabolic model builder for dsh: genome in, validated SBML out.
 |------|------|------|
 | dsh 引擎 | 0.1.x（`npx -y @deepseek-ai/dsh --version` 可查） | 宿主 |
 | Node.js | ≥ 22.19 或 ≥ 24（见 `package.json` 的 `engines`） | 宿主 |
-| Python | 3.10+，且装 **`cobra`** | 分析/验证/补洞/账本/基准/导出 —— 除 `gem_build` 外的 22 个工具 |
+| Python | 3.10+，且装 **`cobra`** | 分析/验证/补洞/账本/基准/导出 —— 除 `gem_build` 外的 23 个工具 |
 | `pyrodigal` | 装在同一个 Python 环境（可选但建议） | 裸基因组自动注释兜底（`gem_annotate` / fna 输入） |
 | **CarveMe** | 独立 venv `~/.dsh/dsh-bio-gem/venv-carveme`，含 `carve.exe` + **`diamond.exe`** | `gem_build`（carveme 引擎） |
 | WSL2 + gapseq | 可选，按 WSL2 环境拓扑（见第 4 节） | `gem_build`（gapseq 引擎） |
@@ -121,7 +121,7 @@ unzip -o diamond.zip diamond.exe -d "$HOME/.dsh/dsh-bio-gem/venv-carveme/Scripts
 
 ### 4.（可选）gapseq 引擎（WSL2）
 
-`gem_build` 的 `engine=gapseq` 走 WSL2 桥（`gem_gapseq` 原子四步：setup / launch / status / fetch），质量档耗时 30-60 分钟/模型，非必需——默认的 `engine=carveme` 已能出可验证模型。桥按 WSL2 + conda 环境拓扑实现（默认路径见 `python/gapseq_wsl.py` 顶部常量，换机器需相应调整），故目前**视为实验性可选能力**。没有 WSL2 不影响其余 22 个工具与 carveme 构建。
+`gem_build` 的 `engine=gapseq` 走 WSL2 桥（`gem_gapseq` 原子四步：setup / launch / status / fetch），质量档耗时 30-60 分钟/模型，非必需——默认的 `engine=carveme` 已能出可验证模型。桥按 WSL2 + conda 环境拓扑实现（默认路径见 `python/gapseq_wsl.py` 顶部常量，换机器需相应调整），故目前**视为实验性可选能力**。没有 WSL2 不影响其余 23 个工具与 carveme 构建。
 
 能力探针只读检查 `doall` 使用的环境内 `seq/Bacteria` 元数据和 `rev/rxn/unrev` 文件，不请求 Zenodo。检查路径与当前固定的 conda 环境路径一致。
 
@@ -198,11 +198,12 @@ npx -y @deepseek-ai/dsh --profile web --dump-config | grep dsh-bio-gem
 
 CarveMe + diamond are required only by `gem_build`; the other 22 tools need nothing but a `cobra`-enabled Python.
 
-## 工具（23）
+## 工具（24）
 
 | 工具 | 作用 | 状态 |
 |---|---|---|
 | `gem_report` | 模型摘要、按当前 SBML 内容过滤的预测账本摘要，以及模型卡声明的 claimed/effective 审计状态 | ✅ |
+| `gem_models` | 链霉菌权威模型目录（Sco-GEM/Salb-GEM/iJV1220）：list/install/verify + SHA256 完整性校验；装完返回的绝对路径可直接传其他 gem 工具 | ✅ |
 | `gem_validate` | 六道关卡 G1-G6；G6 为封闭边界下 ATP 水解耗散检测，SKIP/ERROR 不能使 overall 为 PASS | ✅ |
 | `gem_gapfind` | 缺口分级诊断（L1 缺交换 / L2 缺转运 / L3 内部路径）| ✅ |
 | `gem_gapfill` | 规则级补洞（L1/L2 自动，provenance 打标，防过补四闸门）| ✅ |

@@ -1,6 +1,6 @@
-// dsh-bio-gem — 工具层（defineTool 注册，23 语义化工具）
+// dsh-bio-gem — 工具层（defineTool 注册，24 语义化工具）
 // 全部执行走 python/gem_ops.py（JSON stdin 协议）或 build.py CLI（gem_build 长任务）。
-// op 与工具对照：23 op + gem_build（build CLI 直调）；详见 docs/ARCHITECTURE.md §3。
+// op 与工具对照：24 op + gem_build（build CLI 直调）；详见 docs/ARCHITECTURE.md §3。
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { join } from 'node:path'
 import { dirname, isAbsolute } from 'node:path'
@@ -615,6 +615,28 @@ export function registerTools(ctx) {
     },
     op: 'sample',
     timeoutMs: 900_000,
+  })))
+
+
+  // gem_models：链霉菌权威模型目录（list / install / verify；SHA256 校验）
+  disposers.push(ctx.tools.register(gemTool({
+    name: 'gem_models',
+    description:
+      '链霉菌权威代谢模型目录（catalog）：列出一批已发表、来源可追溯的链霉菌 GEM——' +
+      'S. coelicolor（Sco-GEM）/ S. albidoflavus J1074（Salb-GEM）/ S. lividans（iJV1220），' +
+      '支持下载安装到本地模型库（~/.dsh/dsh-bio-gem/models/）并做 SHA256 完整性校验。' +
+      'action=list 列目录（含本地已装状态）；action=install 下载安装（model_id 缺省装全部；已装且校验通过则跳过）；' +
+      'action=verify 校验本地文件。安装成功后返回模型绝对路径，可直接传给 gem_report / gem_validate / gem_quality / ' +
+      'gem_sample / gem_benchmark 等工具使用。下载走直连→环境代理（HTTP(S)_PROXY）回退，校验失败 fail-closed 不放行。' +
+      '其余链霉菌物种（如 S. venezuelae / S. scabies）暂无公开可获取的 curated GEM（BiGG 亦不含链霉菌），' +
+      '可用 gem_build（carveme/gapseq）从基因组构建草稿模型替代。' +
+      '触发词：链霉菌模型、下载模型、装模型、coelicolor 模型、J1074 模型、iJV1220。',
+    parameters: {
+      action: { type: 'string', enum: ['list', 'install', 'verify'], description: '操作：list（列出目录与本地状态）| install（下载安装）| verify（校验本地文件）' },
+      model_id: { type: 'string', description: '指定条目 id（sco-gem / salb-gem / lividans-ijv1220）；install 缺省=全部条目；list/verify 可省略' },
+    },
+    op: 'models',
+    timeoutMs: 600_000,
   })))
 
 

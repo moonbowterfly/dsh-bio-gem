@@ -384,6 +384,37 @@ OPS = {
 
 
 # ---------------------------------------------------------------------------
+# op: models — 链霉菌权威模型目录（list / install / verify）
+# 数据与下载实现：python/model_catalog.py（条目登记 + SHA256 校验 + 直连/代理回退）
+# ---------------------------------------------------------------------------
+def op_models(args):
+    """链霉菌权威模型目录：list（列目录+本地状态）/ install（下载+校验）/ verify（校验本地）。
+
+    action=install 缺省装全部条目；已存在且 SHA256 匹配 → already_installed（幂等）；
+    冲突（本地文件与登记不一致）默认不覆盖、如实报告。安装成功的绝对路径可直接传给
+    gem_report / gem_validate / gem_quality / gem_sample / gem_benchmark 等工具。
+    """
+    from model_catalog import list_models, install_model, verify_models
+    action = (args.get("action") or "list").strip().lower()
+    model_id = (args.get("model_id") or "").strip() or None
+    models_dir = args.get("models_dir") or _MODEL_DIR
+    if action == "list":
+        if model_id:
+            return {"ok": False, "error": "action=list 不接受 model_id（列出即全部条目）"}
+        return {"ok": True, "result": list_models(models_dir)}
+    if action == "install":
+        res = install_model(models_dir, entry_id=model_id, force=bool(args.get("force")))
+        return {"ok": bool(res.get("ok")), "result": res}
+    if action == "verify":
+        res = verify_models(models_dir, entry_id=model_id)
+        return {"ok": bool(res.get("ok")), "result": res}
+    return {"ok": False, "error": f"unknown action: {action!r}（可用: list / install / verify）"}
+
+
+OPS["models"] = op_models
+
+
+# ---------------------------------------------------------------------------
 # op: biomass_inspect / biomass_apply — biomass 精修（可选 profile，不默认替换）
 # ---------------------------------------------------------------------------
 def op_biomass_inspect(args):

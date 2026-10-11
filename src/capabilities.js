@@ -116,6 +116,9 @@ export const TOOLS_MANIFEST = [
     cost_class: 'light', network: 'none', mutability: 'read_only', status: 'ready',
     requires: ['python.cobra'],
     summary: '模型摘要 + 账本基率' },
+  { name: 'gem_models', capability: 'gem.asset.models', category: 'assets',
+    cost_class: 'medium', network: 'required', mutability: 'writes_output', status: 'ready',
+    summary: '链霉菌权威模型目录（Sco-GEM/Salb-GEM/iJV1220）：list/install/verify + SHA256 校验' },
 ]
 
 export const CONTRACT_VERSION = '1'

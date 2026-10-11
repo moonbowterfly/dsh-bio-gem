@@ -73,6 +73,8 @@ assertCount('docs/ARCHITECTURE.md', /仍照常注册 (\d+) 个 `gem_\*` 工具/g
 assertCount('src/index.js', /(\d+) 个工具与 skill/g, toolCount, 'index.js 工具数（注释）')
 assertCount('src/tools.js', /，(\d+) 语义化工具/g, toolCount, 'tools.js 头注释工具数')
 assertCount('src/tools.js', /op 与工具对照：(\d+) op/g, opCount, 'tools.js op 计数')
+assertCount('test/optional-injection.js', /assert\.equal\(toolRegistrations, (\d+)\)/g, toolCount, 'optional-injection 注册数')
+assertCount('test/smoke.js', /check\('tools: (\d+) 个语义化工具注册/g, toolCount, 'smoke 注册数')
 
 // skill 是按任务选工具的表，不承诺工具总数；逐名覆盖比添加一个容易漂移的计数句更有用。
 const skillFile = 'skills/gem-expert.md'
