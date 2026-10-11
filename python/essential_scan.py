@@ -177,9 +177,14 @@ def essential_scan(model_path, medium=None, gene_subset=None, progress=None, led
         from model_card import load_card as _load_card
         lineage_v = ((_load_card(model_path) or {}).get("model_lineage") or {}).get("version")
         cond = preset or (f"custom({len(resolved)} EX)" if resolved else "unspecified")
+        context = _ledger.make_analysis_context(
+            model_path, m, "essentiality", "gem.essentiality.fva-knockout.v1",
+            parameters={"gene_subset": sorted(gene_subset) if gene_subset else None,
+                        "fva_fraction": 0, "growth_epsilon": EPS,
+                        "medium_unresolved": unresolved, "lineage_version": lineage_v})
         result["ledger_registration"] = _ledger.register_essentiality(
             model_path, result, model=m, condition=cond, lineage_version=lineage_v,
-            path=ledger_path)
+            path=ledger_path, analysis_context=context)
     except Exception as e:
         sys.stderr.write(f"[scan] ledger registration WARN: {type(e).__name__}: {e}\n")
     # P1-4：关联基因注释表（坐标ID→locus_tag/product），让必需基因可解读

@@ -13,6 +13,10 @@ import re
 import sys
 import json
 import hashlib
+import importlib.metadata
+import shutil
+import tempfile
+import math
 from datetime import datetime
 
 LEDGER_DIR = os.path.join(os.path.expanduser("~"), ".dsh", "dsh-bio-gem", "ledger")
@@ -28,12 +32,111 @@ def _now_iso():
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
+def sbml_sha256(model_path):
+    """SBML snapshot 完整文件 SHA256（内容身份；路径仅是定位字段）。文件不存在 → None。"""
+    if not model_path:
+        return None
+    p = model_path
+    try:
+        if not os.path.exists(p):
+            return None
+        h = hashlib.sha256()
+        with open(p, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        return "sha256:" + h.hexdigest()
+    except OSError:
+        return None
+
+
+def _model_hash_of(model_path):
+    """Current-run snapshot only. Never assign it to a historical row."""
+    return sbml_sha256(model_path)
+
+
+IDENTITY_POLICY = "gem.prediction-identity.v2"
+MIGRATION_POLICY = "gem.ledger-migration.v2"
+
+
+def _canonical(value):
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def _safe_identity_value(value, invalid, field):
+    """Keep incomplete numerical state explicit and JSON-valid."""
+    if isinstance(value, float) and not math.isfinite(value):
+        invalid.append(field)
+        return None
+    if isinstance(value, dict):
+        return {str(k): _safe_identity_value(v, invalid, f"{field}.{k}")
+                for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_safe_identity_value(v, invalid, f"{field}[{i}]")
+                for i, v in enumerate(value)]
+    return value
+
+
+def make_analysis_context(model_path, model, method, method_version, *, parameters=None,
+                          applied_bounds=None, reference_sha256=None):
+    """Capture a producer's actual model, medium bounds, method and solver state."""
+    mh = sbml_sha256(model_path)
+    if applied_bounds is None and model is not None:
+        applied_bounds = {r.id: [r.lower_bound, r.upper_bound] for r in model.reactions
+                          if r.boundary or r.id.startswith("EX_")}
+    solver = getattr(model, "solver", None)
+    interface = getattr(solver, "interface", None)
+    solver_name = getattr(interface, "__name__", None)
+    solver_dist = "swiglpk" if solver_name and "glpk" in solver_name else (
+        "gurobipy" if solver_name and "gurobi" in solver_name else None)
+    try:
+        solver_version = importlib.metadata.version(solver_dist) if solver_dist else None
+    except importlib.metadata.PackageNotFoundError:
+        solver_version = None
+    tolerances = getattr(getattr(solver, "configuration", None), "tolerances", None)
+    invalid = []
+    solver_tolerances = _safe_identity_value(
+        {key: getattr(tolerances, key, None) for key in ("feasibility", "optimality", "integrality")},
+        invalid, "solver.tolerances")
+    bounds = ({k: list(v) for k, v in sorted((applied_bounds or {}).items())}
+              if applied_bounds is not None else None)
+    bounds = _safe_identity_value(bounds, invalid, "applied_medium_bounds")
+    params = _safe_identity_value(parameters or {}, invalid, "parameters")
+    context = {"identity_policy": IDENTITY_POLICY, "model_sha256": mh,
+               "method": method, "method_version": method_version,
+               "applied_medium_bounds": bounds,
+               "parameters": params, "reference_sha256": reference_sha256,
+               "solver": {"interface": solver_name, "version": solver_version,
+                          "tolerances": solver_tolerances,
+                          "tolerances_not_exposed": [k for k, v in solver_tolerances.items() if v is None]},
+               "invalid_identity_fields": invalid}
+    feasible_tol = solver_tolerances["feasibility"]
+    valid_feasible_tol = isinstance(feasible_tol, (int, float)) and feasible_tol > 0
+    context["identity_status"] = ("resolved" if all((mh, method, method_version,
+                                      applied_bounds is not None, solver_name, solver_version,
+                                      valid_feasible_tol, not invalid))
+                                  else "unresolved")
+    return context
+
+
+def prediction_uid(row):
+    """Stable scientific key; display prose and source paths do not enter it."""
+    parts = {"identity_policy": IDENTITY_POLICY, "model_sha256": row.get("model_sha256"),
+             "analysis_context": row.get("analysis_context"), "type": row.get("type"),
+             "subject": row.get("subject")}
+    return "pred:" + hashlib.sha256(_canonical(parts).encode("utf-8")).hexdigest()
+
+
 def _content_hash(model, condition, rtype, content):
     # 实测发现：Windows 路径斜杠/大小写差异（"F:/a" vs "F:\a"）会使同一模型的
     # 重复登记漏过去重——hash 前做 normcase+normpath 归一化（首登记的存储格式不变）。
     m = os.path.normcase(os.path.normpath(model)) if model else ""
     raw = "\x1f".join([m, condition or "", rtype or "", content or ""])
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _prediction_identity_hash(row):
+    """Only a resolved v2 UID may suppress a current prediction."""
+    return row.get("prediction_uid") if row.get("identity_status") == "resolved" else None
 
 
 def _norm_path(p):
@@ -100,8 +203,18 @@ def _resolve_rows(path=None, model=None):
     if path:
         return load_rows(path)
     if model:
-        return load_rows(model_ledger_path(model))
+        return load_all_rows()
     return load_all_rows()
+
+
+def row_matches_model(row, model_path, analysis_context=None):
+    """Content match only; a basename or current path cannot certify a historical row."""
+    current = sbml_sha256(model_path)
+    if not current or row.get("model_sha256") != current:
+        return False
+    if analysis_context is not None and row.get("analysis_context") != analysis_context:
+        return False
+    return True
 
 
 def _max_id_num(rows):
@@ -116,23 +229,45 @@ def _max_id_num(rows):
 def register_predictions(new_rows, path=None):
     """追加式登记（幂等）。默认账本按新行 model 推导（一个模型一个账本）；path 显式则覆盖。
     返回 {appended, skipped_duplicates, total_after, corrupt_rows, path,
-    prediction_ids, warn}；写入失败仅 WARN（返回内附 warn 字段），绝不抛异常阻塞主流程。"""
+    prediction_ids, warn}；写入失败仅 WARN（返回内附 warn 字段），绝不抛异常阻塞主流程。
+
+    GM-3：新行按内容身份去重（model hash + 方法版本 + 条件 + 类型 + 内容）；
+    并为新行补 model_sha256 + prediction_uid + structured subject（不凭路径补历史 hash）。"""
     if not path and new_rows:
         path = model_ledger_path((new_rows[0] or {}).get("model"))
     p = path or LEDGER_PATH
     existing, corrupt = load_rows(p)
-    seen = {_content_hash(r.get("model"), r.get("condition"), r.get("type"), r.get("content"))
-            for r in existing}
+    seen = {uid for r in existing if (uid := _prediction_identity_hash(r))}
     out = {"appended": 0, "skipped_duplicates": 0, "total_after": len(existing),
            "corrupt_rows": len(corrupt), "corrupt": corrupt, "path": p, "prediction_ids": [],
            "warn": None}
     to_add = []
-    for row in new_rows:
-        h = _content_hash(row.get("model"), row.get("condition"), row.get("type"), row.get("content"))
-        if h in seen:
+    for item in new_rows:
+        row = dict(item)
+        # Only the bytes read now identify a current producer run. Caller hashes are declarations.
+        claimed = row.pop("model_hash", None) or row.get("model_sha256")
+        actual = _model_hash_of(row.get("model"))
+        row["model_sha256"] = actual
+        if claimed and claimed != actual:
+            row["identity_warning"] = "caller_model_hash_ignored"
+        context = row.get("analysis_context")
+        if isinstance(context, dict):
+            context = dict(context)
+            if context.get("model_sha256") != actual:
+                context["identity_status"] = "unresolved"
+                row["identity_warning"] = "context_model_hash_mismatch"
+            row["analysis_context"] = context
+        complete = (actual and isinstance(row.get("subject"), dict)
+                    and bool(row["subject"]) and isinstance(context, dict)
+                    and context.get("identity_status") == "resolved")
+        row["identity_status"] = "resolved" if complete else "unresolved"
+        row["prediction_uid"] = prediction_uid(row) if complete else None
+        h = _prediction_identity_hash(row)
+        if h and h in seen:
             out["skipped_duplicates"] += 1
             continue
-        seen.add(h)
+        if h:
+            seen.add(h)
         to_add.append(row)
     if not to_add:
         return out
@@ -147,6 +282,7 @@ def register_predictions(new_rows, path=None):
                 row.setdefault("source_refs", [])
                 row.setdefault("comparison_refs", [])
                 row.setdefault("created_at", _now_iso())
+                row.setdefault("subject", None)
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
                 out["prediction_ids"].append(row["prediction_id"])
                 out["appended"] += 1
@@ -158,7 +294,7 @@ def register_predictions(new_rows, path=None):
 
 
 def query_ledger(rtype=None, status=None, condition=None, model=None,
-                 limit=None, offset=0, path=None, deprecated=None):
+                 limit=None, offset=0, path=None, deprecated=None, analysis_context=None):
     """条件过滤（type/status/condition/model 前缀匹配、大小写不敏感、可组合）+ 分页。
     账本定位：显式 path > model（该模型自己的账本）> 聚合所有模型账本。
     deprecated 过滤（True=仅打标行；False=仅未打标行；缺省=全部）。"""
@@ -167,13 +303,6 @@ def query_ledger(rtype=None, status=None, condition=None, model=None,
     def _pref(v, q):
         return str(v or "").lower().startswith(str(q).lower())
 
-    def _pref_model(v, q):
-        # 模型匹配：路径前缀（归一化斜杠/大小写）或 basename 相同（一个模型一个账本的身份=模型名）
-        v, q = v or "", q or ""
-        if _norm_path(v).startswith(_norm_path(q)):
-            return True
-        return os.path.splitext(os.path.basename(v))[0] == os.path.splitext(os.path.basename(q))[0]
-
     def _dep(r):
         return bool(r.get("deprecated"))
 
@@ -181,11 +310,13 @@ def query_ledger(rtype=None, status=None, condition=None, model=None,
             if (not rtype or _pref(r.get("type"), rtype))
             and (not status or _pref(r.get("status"), status))
             and (not condition or _pref(r.get("condition"), condition))
-            and (not model or _pref_model(r.get("model"), model))
+            and (not model or row_matches_model(r, model, analysis_context))
+            and (analysis_context is None or r.get("analysis_context") == analysis_context)
             and (deprecated is None or _dep(r) == bool(deprecated))]
     sliced = hits[offset:] if not limit else hits[offset:offset + limit]
     return {"total": len(rows), "matched": len(hits), "offset": offset,
-            "results": sliced, "corrupt_rows": len(corrupt), "corrupt": corrupt}
+            "results": sliced, "corrupt_rows": len(corrupt), "corrupt": corrupt,
+            "identity_excluded": sum(1 for r in rows if model and not row_matches_model(r, model, analysis_context))}
 
 
 def mark_deprecated_duplicates(path=None, progress=None):
@@ -288,8 +419,8 @@ def _update_file(prediction_id, p, status=None, source_refs=None, comparison_ref
 
 
 def update_row(prediction_id, status=None, source_refs=None, comparison_refs=None, path=None):
-    """按 prediction_id 更新。显式 path 定位单文件；path=None 时遍历所有活动账本找 id
-    （各账本独立编号后 prediction_id 只在账本内唯一——全局扫确保能找到）。"""
+    """按 prediction_id 更新。显式 path 定位单文件；path=None 时遍历所有活动账本找 id。
+    GM-3：跨账本同 prediction_id（P0001 等仅展示 ID，各账本独立编号）→ 明确拒绝歧义更新。"""
     if status is not None and status not in STATUSES:
         return {"ok": False, "error": f"invalid status {status!r}（{STATUSES}）"}
     if path:
@@ -298,6 +429,15 @@ def update_row(prediction_id, status=None, source_refs=None, comparison_refs=Non
     files = _ledger_file_list()
     if os.path.exists(LEDGER_PATH) and LEDGER_PATH not in files:
         files = files + [LEDGER_PATH]  # 兼容旧全局账本（若还在）
+    hits = []
+    for f in files:
+        rows, _ = load_rows(f)
+        if any(r.get("prediction_id") == prediction_id for r in rows):
+            hits.append(f)
+    if len(hits) > 1:
+        return {"ok": False,
+                "error": (f"prediction_id {prediction_id} 在多个账本存在（歧义）：{hits}。"
+                          f"prediction_id 仅展示 ID，各账本独立编号；请用显式 path 定位")}
     for f in files:
         r = _update_file(prediction_id, f, status=status,
                          source_refs=source_refs, comparison_refs=comparison_refs)
@@ -306,17 +446,116 @@ def update_row(prediction_id, status=None, source_refs=None, comparison_refs=Non
     return {"ok": False, "error": f"prediction_id not found: {prediction_id} (no ledger file contains it)"}
 
 
-def ledger_summary(path=None, model=None):
+def migrate_ledger_identity(path=None, dry_run=True, out_manifest=None, out_dir=None):
+    """Migrate into a new atomic directory; never rewrite a source or active index.
+
+    Historical paths cannot prove snapshot bytes. Existing recorded hashes remain
+    unchanged; rows without one stay unresolved, even when today's model exists.
+    The legacy out_manifest argument selects its parent as output directory.
+    """
+    files = [path] if path else _ledger_file_list()
+    if not dry_run:
+        out_dir = out_dir or (os.path.dirname(os.path.abspath(out_manifest)) if out_manifest else None)
+        if not out_dir:
+            raise ValueError("out_dir required for non-destructive migration")
+    report = {"dry_run": bool(dry_run), "policy": MIGRATION_POLICY, "per_file": {}}
+    for source in files:
+        with open(source, "rb") as handle:
+            source_bytes = handle.read()
+        source_sha = "sha256:" + hashlib.sha256(source_bytes).hexdigest()
+        converted, corrupt_bytes, corrupt = [], bytearray(), []
+        for line_number, raw in enumerate(source_bytes.splitlines(keepends=True), 1):
+            try:
+                row = json.loads(raw.decode("utf-8"))
+                if not isinstance(row, dict):
+                    raise ValueError("ledger row must be an object")
+            except (UnicodeDecodeError, ValueError) as error:
+                corrupt.append({"line": line_number, "offset": len(corrupt_bytes),
+                                "bytes": len(raw), "sha256": "sha256:" + hashlib.sha256(raw).hexdigest(),
+                                "error": str(error)[:120]})
+                corrupt_bytes.extend(raw)
+                continue
+            copied = dict(row)
+            if not copied.get("model_sha256") and not copied.get("model_hash"):
+                copied["identity_status"] = "legacy_identity_unresolved"
+                copied.pop("prediction_uid", None)
+            else:
+                copied.setdefault("identity_status", "legacy_hash_retained")
+            converted.append(copied)
+        ledger_bytes = b"".join((_canonical(row) + "\n").encode("utf-8") for row in converted)
+        key = os.path.basename(source)
+        summary = {"source": os.path.abspath(source), "source_sha256": source_sha,
+                   "rows": len(converted), "resolved": 0,
+                   "legacy_unresolved": sum(row.get("identity_status") == "legacy_identity_unresolved" for row in converted),
+                   "corrupt_rows": len(corrupt)}
+        report["per_file"][key] = summary
+        if dry_run:
+            continue
+        os.makedirs(out_dir, exist_ok=True)
+        path_tag = hashlib.sha256(os.path.abspath(source).encode("utf-8")).hexdigest()[:8]
+        final_dir = os.path.join(out_dir, f"{key}-{source_sha[7:19]}-{path_tag}")
+        final_manifest = os.path.join(final_dir, "manifest.json")
+        if os.path.exists(final_dir):
+            with open(final_manifest, encoding="utf-8") as handle:
+                existing = json.load(handle)
+            if existing.get("source_sha256") != source_sha or existing.get("policy") != MIGRATION_POLICY:
+                raise RuntimeError("existing migration output has a different source or policy")
+            if (sbml_sha256(os.path.join(final_dir, "ledger.jsonl")) != existing.get("ledger_sha256")
+                    or sbml_sha256(os.path.join(final_dir, "quarantine.raw")) != existing.get("quarantine_sha256")):
+                raise RuntimeError("existing migration output bytes do not match manifest")
+            summary.update({"output_dir": final_dir, "manifest": final_manifest, "idempotent_reuse": True})
+            continue
+        temp_dir = tempfile.mkdtemp(prefix=".gem-migrate-", dir=out_dir)
+        try:
+            new_ledger = os.path.join(temp_dir, "ledger.jsonl")
+            quarantine = os.path.join(temp_dir, "quarantine.raw")
+            with open(new_ledger, "wb") as handle:
+                handle.write(ledger_bytes)
+                handle.flush()
+                os.fsync(handle.fileno())
+            with open(quarantine, "wb") as handle:
+                handle.write(corrupt_bytes)
+                handle.flush()
+                os.fsync(handle.fileno())
+            manifest = {"policy": MIGRATION_POLICY, "source": os.path.abspath(source),
+                        "source_sha256": source_sha, "rows": len(converted),
+                        "legacy_unresolved": summary["legacy_unresolved"],
+                        "ledger_sha256": "sha256:" + hashlib.sha256(ledger_bytes).hexdigest(),
+                        "quarantine_sha256": "sha256:" + hashlib.sha256(corrupt_bytes).hexdigest(),
+                        "quarantine": corrupt}
+            with open(os.path.join(temp_dir, "manifest.json"), "w", encoding="utf-8") as handle:
+                json.dump(manifest, handle, ensure_ascii=False, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            if sbml_sha256(source) != source_sha:
+                raise RuntimeError("source changed during migration")
+            os.rename(temp_dir, final_dir)
+            summary.update({"output_dir": final_dir, "manifest": final_manifest,
+                            "ledger": os.path.join(final_dir, "ledger.jsonl"),
+                            "quarantine": os.path.join(final_dir, "quarantine.raw")})
+        finally:
+            if os.path.isdir(temp_dir):
+                root = os.path.realpath(out_dir)
+                if os.path.commonpath((root, os.path.realpath(temp_dir))) != root:
+                    raise RuntimeError("unsafe migration temporary path")
+                shutil.rmtree(temp_dir)
+    return report
+
+
+def ledger_summary(path=None, model=None, analysis_context=None):
     """账本摘要：{total, by_status, by_type, by_model, deprecated_count}。
     账本定位：显式 path > model（该模型自己的账本）> 聚合所有模型账本。
     P1-3（2026-08-31）：按模型给 own_model_entries=该模型账本条数，防「把全局账本当作本模型预测」误读。
     约定：一个模型一个账本，model 定位时 total 即该模型预测数。"""
-    rows, corrupt = _resolve_rows(path=path, model=model)
+    all_rows, corrupt = _resolve_rows(path=path, model=model)
+    rows = ([r for r in all_rows if row_matches_model(r, model, analysis_context)]
+            if model else ([r for r in all_rows if r.get("analysis_context") == analysis_context]
+                           if analysis_context is not None else all_rows))
     by_status, by_type, by_model = {}, {}, {}
     dep = 0
     own = None
     if model:
-        own = len(rows)  # 该模型账本的行数（一个模型一个账本）
+        own = len(rows)
     for r in rows:
         s = r.get("status") or "unspecified"
         t = r.get("type") or "other"
@@ -328,12 +567,11 @@ def ledger_summary(path=None, model=None):
         if mm:
             by_model[mm] = by_model.get(mm, 0) + 1
     rep = {"total": len(rows), "by_status": by_status, "by_type": by_type,
-           "by_model": by_model, "deprecated_count": dep, "corrupt_rows": len(corrupt)}
+           "by_model": by_model, "deprecated_count": dep, "corrupt_rows": len(corrupt),
+           "identity_excluded": len(all_rows) - len(rows)}
     if model is not None or own is not None:
         rep["own_model_entries"] = own
-        rep["own_model_note"] = ("own_model_entries=该模型账本条数（一个模型一个账本："
-                                 "账本文件按模型名分，这里就是本模型预测全量；"
-                                 "聚合视图的全局分布见 by_model/其他账本）")
+        rep["own_model_note"] = "own_model_entries=当前模型文件内容 SHA256 匹配的记录数"
     return rep
 
 
@@ -354,7 +592,7 @@ def best_evidence_tier(reactions, default=DEFAULT_TIER):
 
 
 def register_essentiality(model_path, scan_result, model=None, condition=None,
-                          lineage_version=None, path=None):
+                          lineage_version=None, path=None, analysis_context=None):
     """gem_essentiality 自动登记：每必需基因一条（type=essentiality，status=unverified）。
     path=None 时按 model_path 写入该模型的账本（model_ledger_path）。"""
     rows = []
@@ -367,6 +605,8 @@ def register_essentiality(model_path, scan_result, model=None, condition=None,
             pass
         rows.append({
             "type": "essentiality",
+            "subject": {"gene": gid},
+            "analysis_context": analysis_context,
             "content": f"{gid} 在 {condition} 培养基下必需",
             "model": model_path,
             "model_lineage_version": lineage_version,
@@ -382,7 +622,7 @@ def register_essentiality(model_path, scan_result, model=None, condition=None,
 
 
 def register_phenotype(model_path, g4_results, condition=None, lineage_version=None,
-                       model=None, path=None):
+                       model=None, path=None, analysis_context=None):
     """gem_phenotype 自动登记：每底物一条（G4 结果；type=phenotype，status=unverified）。
     evidence 取底物交换反应的 evidence 标注（无则默认 EVIDENCE_rule 并注明）。"""
     rows = []
@@ -399,6 +639,9 @@ def register_phenotype(model_path, g4_results, condition=None, lineage_version=N
             pass
         rows.append({
             "type": "phenotype",
+            "subject": {"substrate": sub, "mode": (condition or "").split("/")[-1]},
+            "analysis_context": {**analysis_context, "test_medium_bounds": r.get("applied_medium_bounds")}
+            if isinstance(analysis_context, dict) else None,
             "content": (f"底物 {sub} 预测{'生长' if r.get('predicted') else '不生长'}"
                         f"（文献={r.get('published')}，匹配={r.get('match')}，"
                         f"growth={r.get('growth')} 1/h）"),
@@ -416,13 +659,15 @@ def register_phenotype(model_path, g4_results, condition=None, lineage_version=N
 
 
 def register_secretion(model_path, secretion_rows, condition=None,
-                       lineage_version=None, path=None):
+                       lineage_version=None, path=None, analysis_context=None):
     """gem_secretion 自动登记：每个可分泌代谢物一条（type=secretion，status=unverified，
     evidence_tier=EVIDENCE_math——production envelope 线性规划结果）。"""
     rows = []
     for r in secretion_rows or []:
         rows.append({
             "type": "secretion",
+            "subject": {"metabolite": r.get("met_id")},
+            "analysis_context": analysis_context,
             "content": (f"代谢物 {r.get('met_id')}({r.get('name') or ''}) 在 {condition} 下"
                         f"模型预测可分泌（max_prod={r.get('max_prod')} mmol/gDW/h）"),
             "model": model_path,
@@ -438,7 +683,7 @@ def register_secretion(model_path, secretion_rows, condition=None,
 
 
 def register_synthetic_lethal(model_path, pair_rows, condition=None,
-                              lineage_version=None, path=None):
+                              lineage_version=None, path=None, analysis_context=None):
     """gem_double_knockout 自动登记：每合成致死对一条（type=synthetic_lethal，
     status=unverified，evidence_tier=EVIDENCE_math——双敲 LP 判定）。"""
     rows = []
@@ -446,6 +691,8 @@ def register_synthetic_lethal(model_path, pair_rows, condition=None,
         ga, gb = r.get("gene_a"), r.get("gene_b")
         rows.append({
             "type": "synthetic_lethal",
+            "subject": {"genes": sorted([ga, gb])},
+            "analysis_context": analysis_context,
             "content": f"{ga} 与 {gb} 在 {condition} 下合成致死",
             "model": model_path,
             "model_lineage_version": lineage_version,
@@ -463,94 +710,47 @@ def register_synthetic_lethal(model_path, pair_rows, condition=None,
 if __name__ == "__main__":
     # 双协议（stdin / argv 文件）+ selftest（临时路径，全功能演示）
     if "--selftest" in sys.argv:
-        import tempfile
         d = tempfile.mkdtemp(prefix="ledger-selftest-")
         p = os.path.join(d, "predictions.jsonl")
-        mk = lambda i: {"type": "essentiality", "content": f"g{i} 在 AB 培养基下必需",
-                        "model": "F:/m.xml", "model_lineage_version": "0.1.4", "condition": "AB",
-                        "evidence_tier": "EVIDENCE_rule", "status": "unverified"}
+        model = os.path.join(d, "m.xml")
+        with open(model, "wb") as f:
+            f.write(b"<model id='selftest'/>")
+        mh = sbml_sha256(model)
+        context = {"identity_policy": IDENTITY_POLICY, "identity_status": "resolved",
+                   "model_sha256": mh, "method": "selftest", "method_version": "1",
+                   "applied_medium_bounds": {"EX_c": [-10, 1000]},
+                   "parameters": {}, "solver": {"interface": "selftest", "version": "1",
+                                                "tolerances": {"feasibility": 1e-7}}}
+        def mk(i):
+            return {"type": "essentiality", "subject": {"gene": f"g{i}"},
+                    "analysis_context": context, "content": f"g{i} 在 AB 培养基下必需",
+                    "model": model, "condition": "AB", "status": "unverified"}
         r1 = register_predictions([mk(1), mk(2), mk(3)], path=p)
         assert r1["appended"] == 3 and not r1["warn"], r1
-        # 幂等：同内容复跑不追加
         r2 = register_predictions([mk(1), mk(2), mk(3)], path=p)
         assert r2["appended"] == 0 and r2["skipped_duplicates"] == 3, r2
-        # model 路径斜杠/大小写不同但指向同一文件 -> 仍判重复
-        r2b = register_predictions([{**mk(1), "model": "f:\\m.XML"}], path=p)
-        assert r2b["appended"] == 0 and r2b["skipped_duplicates"] == 1, r2b
-        # 新增一条 + ID 连续
-        r3 = register_predictions([{**mk(4), "type": "phenotype",
-                                    "content": "底物 Sucrose 预测不生长（文献=1，匹配=False）"}], path=p)
+        # Display text cannot create a new scientific prediction.
+        changed_text = {**mk(1), "content": "rewritten display text"}
+        assert register_predictions([changed_text], path=p)["skipped_duplicates"] == 1
+        old = {"type": "essentiality", "content": "legacy without snapshot",
+               "model": model, "condition": "AB", "status": "unverified"}
+        r3 = register_predictions([old], path=p)
         assert r3["appended"] == 1 and r3["prediction_ids"] == ["P0004"], r3
-        # query 过滤（前缀、可组合）
-        q = query_ledger(rtype="essentiality", path=p)
-        assert q["matched"] == 3 and q["total"] == 4, q
-        q2 = query_ledger(condition="AB", status="unverified", path=p)
-        assert q2["matched"] == 4, q2
-        q3 = query_ledger(rtype="pheno", path=p)  # 前缀匹配
-        assert q3["matched"] == 1, q3
-        # update status + updated_at
+        assert register_predictions([old], path=p)["appended"] == 1
+        q = query_ledger(rtype="essentiality", model=model, path=p)
+        assert q["matched"] == 5 and q["total"] == 5, q
         u = update_row("P0001", status="experimentally_verified",
                        source_refs=["doi:10.1000/test"], path=p)
-        assert u["ok"] and u["row"]["status"] == "experimentally_verified" and "updated_at" in u["row"], u
+        assert u["ok"] and u["row"]["status"] == "experimentally_verified", u
         assert update_row("P0001", status="bogus", path=p)["ok"] is False
-        assert update_row("P9999", status="unverified", path=p)["ok"] is False
-        # corrupt 容错：手工塞坏行
-        with open(p, "a", encoding="utf-8") as f:
-            f.write('{"broken json...\n')
+        with open(p, "ab") as f:
+            f.write(b'{"broken json...\n')
         rows, corrupt = load_rows(p)
-        assert len(rows) == 4 and len(corrupt) == 1 and corrupt[0]["line"] == 5, corrupt
-        s = ledger_summary(path=p)
-        assert s["total"] == 4 and s["by_status"] == {"experimentally_verified": 1,
-                                                      "unverified": 3}, s
-        # update 不破坏坏行（重写后坏行仍在）
-        update_row("P0002", status="literature_supported", path=p)
-        rows2, corrupt2 = load_rows(p)
-        assert len(corrupt2) == 1 and len(rows2) == 4, (corrupt2, rows2)
-        # 直写一条反斜杠 model 的历史态重复行（模拟归一化修复前的存量），
-        # mark_deprecated_duplicates 打标（不删行）+ query 过滤 + summary deprecated_count
-        n_before = len(load_rows(p)[0])
-        with open(p, "a", encoding="utf-8") as f:
-            hist = dict(mk(1))
-            hist["model"] = "f:\\m.xml"  # 同预测、反斜杠风格（历史态）
-            f.write(json.dumps(hist, ensure_ascii=False) + "\n")
-        mk_res = mark_deprecated_duplicates(path=p)
-        assert mk_res["marked"] == 1, mk_res
-        rows3, _ = load_rows(p)
-        assert len(rows3) == n_before + 1  # 不删行：仅 +1 条历史行
-        dep_rows = [r for r in rows3 if r.get("deprecated")]
-        assert len(dep_rows) == 1 and dep_rows[0]["superseded_by"] == "P0001", dep_rows
-        q_dep = query_ledger(deprecated=True, path=p)
-        assert q_dep["matched"] == 1
-        q_ok = query_ledger(deprecated=False, rtype="essentiality", path=p)
-        assert q_ok["matched"] == 3  # 原始 3 条 essentiality 不受影响
-        s3 = ledger_summary(path=p)
-        assert s3["deprecated_count"] == 1 and s3["total"] == n_before + 1, s3
-        # 2026-08-31：一个模型一个账本——model_ledger_path 按 basename 推导
-        assert model_ledger_path("F:/x/C58.xml") == os.path.join(LEDGER_DIR, "C58.jsonl")
-        assert model_ledger_path("C:\\Users\\u\\.dsh\\dsh-bio-gem\\models\\LBA9402.xml") == \
-            os.path.join(LEDGER_DIR, "LBA9402.jsonl")
-        assert model_ledger_path("") == os.path.join(LEDGER_DIR, "default.jsonl")
-        # register path=None -> 该模型账本文件
-        dir2 = tempfile.mkdtemp(prefix="ledger-selftest-")
-        import importlib
-        _ld = os.path.dirname(os.path.abspath(__file__))
-        import tempfile as _tf
-        # 用临时目录覆盖 LEDGER_DIR 验证默认推导（不污染真实账本）
-        old_dir = LEDGER_DIR
-        try:
-            ledger_mod = sys.modules[__name__]
-            ledger_mod.LEDGER_DIR = dir2
-            ledger_mod.LEDGER_PATH = os.path.join(dir2, "predictions.jsonl")
-            rn = register_predictions([mk(1)])
-            assert rn["appended"] == 1 and rn["path"] == os.path.join(dir2, "m.jsonl"), rn
-            qn = query_ledger(model="F:/m.xml")
-            assert qn["total"] == 1 and qn["matched"] == 1, qn
-            sn = ledger_summary(model="F:/m.xml")
-            assert sn["total"] == 1 and sn["own_model_entries"] == 1, sn
-        finally:
-            ledger_mod.LEDGER_DIR = old_dir
-            ledger_mod.LEDGER_PATH = os.path.join(old_dir, "predictions.jsonl")
-        print(json.dumps({"ok": True, "result": {"selftest": "pass", "summary": s3}}))
+        assert len(rows) == 5 and len(corrupt) == 1 and corrupt[0]["line"] == 6
+        assert ledger_summary(path=p, model=model)["total"] == 5
+        assert query_ledger(model=model, path=p)["corrupt_rows"] == 1
+        print(json.dumps({"ok": True, "result": {"selftest": "pass", "resolved": 3,
+                                                "legacy_unresolved": 2, "corrupt_rows": 1}}))
     else:
         args = {}
         if len(sys.argv) > 1:

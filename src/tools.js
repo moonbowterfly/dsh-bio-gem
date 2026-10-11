@@ -100,11 +100,10 @@ export function registerTools(ctx) {
     description:
       '读取 SBML 代谢模型文件，输出模型摘要：基因/反应/代谢物/区室/复制子分布（多质粒/多染色体分离统计）、交换数。' +
       '用于快速检查模型文件是否可加载、规模、是否为多复制子。模型文件不存在或非有效 SBML 会明确报错。' +
-      '输出含 ledger_summary（预测账本基率摘要：total/by_status/by_type/by_model；一个模型一个账本——' +
-      '传本工具 model 时读该模型自己的账本，own_model_entries=本模型条目数=账本总数，不再混其他模型预测；' +
-      '可选 ledger_path 指向自定义账本）与基率披露语境。' +
+      '输出含 ledger_summary（按当前模型文件内容 SHA256 隔离）及模型卡 claimed/effective 审计状态；' +
+      '缺证旧卡的 G3+G4 声明显示为 legacy_claim_unconfirmed。可选 ledger_path 指向自定义账本，仍执行身份过滤。' +
       '触发词：看模型信息、模型摘要、有多少基因。',
-    parameters: { model: { type: 'string', required: true, description: 'SBML 文件绝对路径' }, ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径（缺省=该模型的账本 ~/.dsh/dsh-bio-gem/ledger/<模型名>.jsonl）' } },
+    parameters: { model: { type: 'string', required: true, description: 'SBML 文件绝对路径' }, ledger_path: { type: 'string', description: '可选：自定义账本 JSONL 路径，仍按模型内容筛选' }, analysis_context: { type: 'object', additionalProperties: true, description: '可选：精确分析上下文过滤' } },
     op: 'model_info',
   })))
 
@@ -402,7 +401,8 @@ export function registerTools(ctx) {
       type: { type: 'string', description: 'query 用：类型前缀过滤（essentiality/phenotype/synthetic_lethal/secretion/other）' },
       status: { type: 'string', description: 'query 用：状态前缀过滤（unverified/literature_supported/literature_contradicted/experimentally_verified）' },
       condition: { type: 'string', description: 'query 用：条件前缀过滤（如 AB）' },
-      model: { type: 'string', description: 'query 用：模型路径前缀过滤' },
+      model: { type: 'string', description: 'list/query 用：当前 SBML 内容 SHA256 过滤；旧无证行不命中' },
+      analysis_context: { type: 'object', additionalProperties: true, description: 'list/query 用：精确分析上下文过滤' },
       prediction_id: { type: 'string', description: 'update 用：预测 ID（如 P0001）' },
       source_refs: { type: 'array', items: { type: 'string' }, description: 'update 用：文献/实验来源引用列表' },
       comparison_refs: { type: 'array', items: { type: 'string' }, description: 'update 用：对照记录引用' },
@@ -523,7 +523,8 @@ export function registerTools(ctx) {
       'export_format=csv（默认，utf-8-sig）/json；与账本计数闭合（exported==ledger per type）。' +
       '引物/质粒设计本身不做（方案文件明确）。触发词：靶点清单、导出靶点、targets、基因编辑靶点、引物输入。',
     parameters: {
-      model: { type: 'string', description: '可选：模型路径过滤（精确匹配优先，退化为文件名匹配）' },
+      model: { type: 'string', description: '可选：当前模型内容 SHA256 过滤，不按 basename 回退' },
+      analysis_context: { type: 'object', additionalProperties: true, description: '可选：精确分析上下文过滤' },
       types: { type: 'array', items: { type: 'string' }, description: '类型筛选（essential/synthetic_lethal/secretion；缺省全部三类）' },
       condition: { type: 'string', description: '可选：条件过滤（精确匹配，如 AB）' },
       export_format: { type: 'string', enum: ['csv', 'json'], description: '导出格式（默认 csv）' },

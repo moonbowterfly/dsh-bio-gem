@@ -48,7 +48,7 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 
 > **precursor_scan 的判据取舍（勿回退）**：初版曾用「全开交换下逐前体 demand 能否净生产」的**绝对可达性**判据，在教科书模型 e_coli_core 上把 atp_c/accoa_c/nad_c/nadph_c 误报为「结构缺失」（辅因子有循环补给路径，稳态下不净生产 ≠ 网络不能供给），故否决。现行判据为**相对判断**：先测基线通量，可生长即直接返回「无阻塞」；不生长才逐前体做移除测试，由「移除后是否恢复通量」直接定义阻塞点。验证锚：toy 单点阻塞模型（精确命中）、e_coli_core（growable，零误报）、iNX1344_v3（infeasible_or_constrained，与 agent 手工探索结论一致）。
 
-> 其余工具层约定：附模型卡统一写入 `python/model_card.py`（lineage/verified_phenotypes/essential_genes/robustness v3）与往返保真自检 `python/roundtrip_check.py`；预测账本 `python/ledger.py`（一个模型一个账本：`~/.dsh/dsh-bio-gem/ledger/<模型名>.jsonl`，按模型 basename 分，显式 ledger_path 可覆盖；无参查询=聚合全局视图；旧全局 predictions.jsonl 已迁移为 legacy）。**生长/通量数值口径**：所有产出生长/通量数值的工具输出均带 `units` 声明——归一化 biomass 反应（产物系数=1）的生长值为 `1/h`（比生长速率 μ）；一般反应通量为 `mmol/gDW/h`。另带单点 FBA 声明；条件间通量对比一律走 gem_fluxscan 区间分离判定（overlap=伪影禁止引用）。
+> 其余工具层约定：附模型卡统一写入 `python/model_card.py`（lineage/verified_phenotypes/essential_genes/robustness v3）与往返保真自检 `python/roundtrip_check.py`；预测账本 `python/ledger.py` 的文件名仍由模型 basename 定位，但登记的科学身份采用 SBML 字节 SHA256、实际培养基边界、方法/版本/参数与 solver/容差。查询、模型报告和 targets 导出按模型内容及可选 analysis_context 过滤；显式 ledger_path 只选择文件，不放宽身份过滤。旧行缺可信历史 hash 时保持 unresolved，迁移输出为新目录并保留原账本及坏行原字节。**生长/通量数值口径**：所有产出生长/通量数值的工具输出均带 `units` 声明——归一化 biomass 反应（产物系数=1）的生长值为 `1/h`（比生长速率 μ）；一般反应通量为 `mmol/gDW/h`。另带单点 FBA 声明；条件间通量对比一律走 gem_fluxscan 区间分离判定（overlap=伪影禁止引用）。
 
 ## 4. 引擎路线（三个阶段）
 
@@ -66,7 +66,7 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 | G3 | 生长真实性（声明培养基）| ✅ | 有碳源 objective_value>0；无碳 <1e-6；全关=0；与参照值比值≥99% 判 PASS |
 | G4 | 底物表型对照 | 条件 | 有参照表才跑（内置 C58 39 底物作回归锚），不设阻塞阈值 |
 | G5 | 必需基因抽检（≤30 基因）| 条件 | 有参照集才跑；映射覆盖 <80% 时 SKIP(WARN) |
-| G6 | ATP 泄漏检测（全关交换后 ATP demand 应≈0）| ✅ | leak ≤0.01 判 PASS；ATP 解析走 id→name→formula 三级回退（跨 ID 体系）|
+| G6 | ATP 水解耗散检测 | ✅ | 全边界关闭后最大化 ATP+H₂O→ADP+Pi+H⁺，仅 optimal 且原始通量≤max(1e-6, solver feasibility 容差) 为 PASS；角色缺失/歧义为 SKIP 并使 overall 至少 WARN，正耗散为 FAIL，solver/容差错误不得 PASS；单 ATP demand 仅作诊断 |
 
 **G0 的由来（2026-09-10 实测）**：MetaCyc 风格 id 的公开模型（iNX1344_v3）上，
 `gem_gapfind` 报 5 个 L3「内部通路缺口」，实为 biomass 前体未映射所致——逐个
@@ -80,7 +80,7 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 
 关卡 fail-fast 排序 G0→G1→G3→G2（便宜的先行）；gem_validate 保持**无状态**，同 run 可双跑（补洞前后 diff 写进模型卡）。
 
-**判据口径**：FBA objective_value（mmol/gDW/h），不用 μ（h⁻¹）——模型输出单位即通量；C58 回归锚：gapseq AB=0.519981；补洞后 CarveMe 目标 ≥0.1 为软目标。
+**判据口径**：FBA objective_value 是 biomass 反应通量；当 biomass 按 1 gDW 归一化时，以 μ（1/h）报告，否则按原模型通量单位解释。C58 回归锚：gapseq AB=0.519981；补洞后 CarveMe 目标 ≥0.1 为软目标。
 
 ## 6. 缺口分级（gapfind/gapfill）
 
@@ -96,12 +96,9 @@ dsh 平台的 **GEM 构建侧插件**：输入细菌全基因组（支持多质�
 
 ## 7. 模型卡（sidecar JSON，与 SBML 同目录同名 .card.json）
 
-```
-{ engine, engine_version, db_version, command, started, finished,
-  memote_like: {g1..g5}, gapfixes: [{type, reaction, reason, source}],
-  growth: {medium, before, after}, mapping_coverage,
-  replicons, warnings }
-```
+每项 supported_mediums 同时存 declared validation_status 和 validation_evidence：G3/G4 真实 gate 明细、模型文件 hash、介质身份、政策版本。读取时 `load_card()` 返回副本，并为每项加 claimed/effective/audit 状态；旧 G3+G4 声明无同模型、同介质的 G4 PASS 证据时 effective 为 `legacy_claim_unconfirmed`，原文件不改。build 不运行 G4，因此即使 G3 PASS 也只能声明 `verified_G3_only`。phenotype_fix 在实际 sole 条件下记录参考表 hash、匹配数、G4 状态及每底物实际边界；其他介质的声明不会随之升级。
+
+CarveMe 复用缓存的 sidecar 为 `<model>.xml.fingerprint.json`，含 `gem.carveme-cache.v2`、规范输入/引擎/DIAMOND/数据库/配置/媒体表/参数身份、模型输出 SHA256。命中同时比对这三部分；身份不明、旧 sidecar、输出缺失或被改写均重建。目标介质与构建身份分开，命中后仍运行该介质验证。
 写盘用 cobra.io.write_sbml_model（cobra 0.32.1 无 Model.save_model——坑位记档）。
 
 ## 8. 后台任务（基建）

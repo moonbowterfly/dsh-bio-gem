@@ -10,6 +10,7 @@ from silentio import silent_read_sbml, silent_write_sbml
 from validate import validate_model
 from gapfind import find_gaps, expand_medium, resolve_medium
 from gapfill import apply_fixes
+from fingerprint import file_sha256
 
 
 def _note(*a):
@@ -33,12 +34,16 @@ def phenotype_fix(model_path, phenotype_table=None, medium=None, max_add=20, out
         rep = validate_model(path, medium=med, phenotype_table=phenotype_table,
                              carbon_mode="sole")   # 缺口检测用唯一碳源语义（防 AB 葡萄糖掩盖）
         g4 = rep.get("g4") or {}
-        if g4.get("status") == "SKIP":
-            return None, g4
-        return (g4.get("matched", 0), g4.get("total", 0)), g4
+        if g4.get("status") in ("SKIP", "ERROR"):
+            return None, g4, rep
+        return (g4.get("matched", 0), g4.get("total", 0)), g4, rep
 
     # before（sole 语义）
-    (bm, bt), g4b = g4_on(model_path)
+    before_counts, g4b, before_gate_report = g4_on(model_path)
+    if before_counts is None:
+        return {"status": "not_evaluated", "error": "G4 reference/medium/solver unavailable",
+                "gate": g4b, "model": model_path}
+    bm, bt = before_counts
     before_rate = bm / bt if bt else None
     targets = [x for x in (g4b.get("results") or [])
                if x.get("published") == 1 and x.get("predicted") == 0
@@ -63,7 +68,11 @@ def phenotype_fix(model_path, phenotype_table=None, medium=None, max_add=20, out
         print(f"修复 {len(fixed)} 项；L3 候选 {len(l3_list)} 个", file=sys.stderr)
 
     # after
-    (am, at), g4a = g4_on(cur)
+    after_counts, g4a, after_gate_report = g4_on(cur)
+    if after_counts is None:
+        return {"status": "not_evaluated", "error": "G4 after-run unavailable",
+                "gate": g4a, "model": cur}
+    am, at = after_counts
     after_rate = am / at if at else None
     print(f"[after] 匹配 {am}/{at}（{after_rate:.1%}）", file=sys.stderr)
 
@@ -77,6 +86,9 @@ def phenotype_fix(model_path, phenotype_table=None, medium=None, max_add=20, out
         "model": cur,
         "medium_preset": preset,
         "medium_unresolved": unresolved,
+        "after_gate_report": after_gate_report,
+        "before_gate_report": before_gate_report,
+        "resolved_medium_bounds": resolve_medium(silent_read_sbml(cur), med)[0] if med else {},
     }
     # 模型卡 schema v2 回写（源模型旁有 card 才传播+追加；无卡不凭空造卡）
     card_version = None
@@ -84,7 +96,8 @@ def phenotype_fix(model_path, phenotype_table=None, medium=None, max_add=20, out
         from model_card import append_operation, load_card, propagate_card, set_verified_phenotypes
         propagate_card(model_path, cur)
         if load_card(cur) is not None:
-            set_verified_phenotypes(cur, result, semantics="sole")
+            set_verified_phenotypes(cur, result, semantics="sole",
+                                    reference_identity=file_sha256(phenotype_table))
             card = append_operation(cur, "phenotype_fix", reactions_added=len(fixed),
                                     detail={"before": result["before"], "after": result["after"],
                                             "l3_remaining": len(l3_list)})
@@ -98,9 +111,22 @@ def phenotype_fix(model_path, phenotype_table=None, medium=None, max_add=20, out
         from model_card import load_card as _load_card
         lineage_v = ((_load_card(cur) or {}).get("model_lineage") or {}).get("version")
         cond = (preset or "custom") + "/sole"
+        context_model = silent_read_sbml(cur)
+        for rxn in context_model.reactions:
+            if rxn.boundary or rxn.id.startswith(("EX_", "DM_", "SK_")):
+                rxn.lower_bound = 0.0
+        for rid, lower in result["resolved_medium_bounds"].items():
+            if rid in context_model.reactions:
+                context_model.reactions.get_by_id(rid).lower_bound = lower
+        context = _ledger.make_analysis_context(
+            cur, context_model, "phenotype", "gem.phenotype.g4-sole.v1",
+            parameters={"medium": med, "resolved_medium_bounds": result["resolved_medium_bounds"],
+                        "medium_unresolved": unresolved, "max_add": max_add,
+                        "lineage_version": lineage_v, "carbon_mode": "sole"},
+            reference_sha256=file_sha256(phenotype_table))
         result["ledger_registration"] = _ledger.register_phenotype(
             cur, result.get("after_results") or [], condition=cond, lineage_version=lineage_v,
-            model=silent_read_sbml(cur), path=ledger_path)
+            model=context_model, path=ledger_path, analysis_context=context)
     except Exception as e:
         print(f"[phenotype_fix] ledger registration WARN: {type(e).__name__}: {e}", file=sys.stderr)
     return result

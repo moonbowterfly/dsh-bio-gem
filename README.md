@@ -202,8 +202,8 @@ CarveMe + diamond are required only by `gem_build`; the other 22 tools need noth
 
 | 工具 | 作用 | 状态 |
 |---|---|---|
-| `gem_report` | 模型摘要（基因/反应/区室/复制子分布）+ 预测账本基率摘要（ledger_summary）| ✅ |
-| `gem_validate` | 六道关卡 G1-G6（加载/元素平衡/生长真实性/表型(条件)/必需性抽检(条件)/ATP 泄漏）| ✅ |
+| `gem_report` | 模型摘要、按当前 SBML 内容过滤的预测账本摘要，以及模型卡声明的 claimed/effective 审计状态 | ✅ |
+| `gem_validate` | 六道关卡 G1-G6；G6 为封闭边界下 ATP 水解耗散检测，SKIP/ERROR 不能使 overall 为 PASS | ✅ |
 | `gem_gapfind` | 缺口分级诊断（L1 缺交换 / L2 缺转运 / L3 内部路径）| ✅ |
 | `gem_gapfill` | 规则级补洞（L1/L2 自动，provenance 打标，防过补四闸门）| ✅ |
 | `gem_l3_fix` | L3 内部路径补洞（L3a 连通性/L3b 白名单+BiGG 反应式；证据分级 + 防过补第五闸门）| ✅ C58 阿拉伯糖 0→0.851 |
@@ -216,12 +216,12 @@ CarveMe + diamond are required only by `gem_build`; the other 22 tools need noth
 | `gem_media_resolve` | 跨引擎介质解析 RPC（自然名→EX ID；消费侧统一入口）| ✅ AB→20 EX |
 | `gem_fluxscan` | 通量区间制（FVA 区间+pFBA 点值；条件对比区间分离判定，overlap=伪影禁止引用）| ✅ C58 AB 0.519981 / 蔗糖 supplement 0.97077 |
 | `gem_sensitivity` | 结构性灵敏度（GAM×biomass 22 组合全量+稳定性三分类+单组分漂移+模型卡鲁棒性 v3）| ✅ C58 基准复现 155 |
-| `gem_ledger` | 预测账本（essentiality/phenotype 自动登记；幂等；list/query/update；基率追踪）| ✅ C58 155+19 条幂等复跑 |
+| `gem_ledger` | 预测账本：实际模型字节、培养基边界、方法/参数和 solver 身份形成 UID；查询按内容过滤，旧无证身份不抑制新预测 | ✅ 当前契约见 docs/ARCHITECTURE.md |
 | `gem_benchmark` | 通用基准对比（两模型六关并列/生长/biomass 断供探针/必需性对比[退化护栏]/表型/账本回填；介质层两级策略；支持 bigg:&lt;id&gt; 下载）| ✅ B1 自检 C58 vs C58_P1；B2 C58 vs iNX1344_v4；B3 bigg:iML1515 |
 | `gem_secretion` | 可分泌代谢物谱（production envelope 扫描；边界声明=纯拓扑 LP；wt<=EPS 退化护栏）| ✅ C58: 182 候选 85 可分泌 |
 | `gem_double_knockout` | 双敲 v1 合成致死（GPR 穷尽先验+全扫预算；假设生成声明内置）| ✅ C58: Atu3364↔Atu4682 对应命中 |
 | `gem_enrichment` | 必需基因通路富集（超几何+BH FDR；通路源=SBML groups；无注释诚实兜底）| ✅ C58: 388 通路 55 显著 |
-| `gem_targets` | 靶点清单规范导出（账本三类 -> 锁定 schema CSV/JSON；计数闭合）| ✅ C58: 258 行三类闭合 |
+| `gem_targets` | 靶点清单规范导出（11 列 CSV/JSON，按模型内容过滤，meta sidecar 保存来源 UID/模型 hash）| ✅ 当前契约见 docs/ARCHITECTURE.md |
 | `gem_precursor_scan` | 阻塞前体分析（模型为什么不长：基线通量→可生长即返无阻塞；不生长则逐前体移除测试定位阻塞点）| ✅ 2026-09-11 新增 |
 | `gem_quality` | 模型质量报告（gem-qi-v1：blocked/环路(fastcc 方向锥)/元素平衡/孤儿与死端/覆盖/连通性 + 启发式聚合分；分项与 failed_checks 为准）| ✅ C58+AB: qi 67.23 / blocked 1032 / cyclic 289 |
 | `gem_sample` | 通量空间采样（ACHR 默认 / OptGP 大样本；growth_floor_fraction 受限空间；全空间 vs 受限边界声明）| ✅ C58+AB: 全空间 median 0.019 / floor-0.9 min 0.468 |

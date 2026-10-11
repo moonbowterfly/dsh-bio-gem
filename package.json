@@ -52,7 +52,7 @@
   },
   "scripts": {
     "smoke": "node test/smoke.js",
-    "test": "node test/check-version-source.mjs && node test/smoke.js --skip-build && python -I test/test_gapseq_probe.py && python -I test/test_fsutil.py && node test/integration.js && node test/capabilities.js && node --import ./test/register-dsh-tools.mjs test/optional-injection.js && node --import ./test/register-dsh-tools.mjs test/check-capabilities.mjs && node test/check-counts.mjs && node test/capabilities-warn-state.mjs && node test/workdir.mjs",
+    "test": "node test/check-version-source.mjs && node test/smoke.js --skip-build && python -I test/test_gapseq_probe.py && python -I test/test_fsutil.py && node test/run-gem-pytest.mjs test/test_g6_atp_maintenance.py && node test/run-gem-pytest.mjs test/test_gm2_card_claims.py && node test/run-gem-pytest.mjs test/test_gm3_identity.py && node test/run-gem-pytest.mjs test/test_r2_production.py && node test/integration.js && node test/capabilities.js && node --import ./test/register-dsh-tools.mjs test/optional-injection.js && node --import ./test/register-dsh-tools.mjs test/check-capabilities.mjs && node test/check-counts.mjs && node test/capabilities-warn-state.mjs && node test/workdir.mjs",
     "test:full": "node test/smoke.js && node test/integration.js && node test/capabilities.js && node --import ./test/register-dsh-tools.mjs test/optional-injection.js && node --import ./test/register-dsh-tools.mjs test/check-capabilities.mjs && node test/check-counts.mjs"
   },
   "peerDependencies": {

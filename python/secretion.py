@@ -109,8 +109,13 @@ def secretion(model_path, medium=None, fractions=None, export_csv=None,
             from model_card import load_card as _load_card
             lineage_v = ((_load_card(model_path) or {}).get("model_lineage") or {}).get("version")
             cond = preset or (f"custom({len(resolved)} EX)" if resolved else "unspecified")
+            context = _ledger.make_analysis_context(
+                model_path, m, "secretion", "gem.secretion.envelope.v1",
+                parameters={"fractions": fractions, "growth_epsilon": EPS,
+                            "medium_unresolved": unresolved, "lineage_version": lineage_v})
             reg = _ledger.register_secretion(model_path, feasible, condition=cond,
-                                             lineage_version=lineage_v, path=ledger_path)
+                                             lineage_version=lineage_v, path=ledger_path,
+                                             analysis_context=context)
             out["ledger_registration"] = reg
             log(f"[secretion] ledger: appended={reg['appended']} skipped={reg['skipped_duplicates']}")
         except Exception as e:

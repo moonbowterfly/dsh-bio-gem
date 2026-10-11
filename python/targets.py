@@ -10,6 +10,7 @@ import sys
 import csv
 import time
 import json
+import hashlib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -46,26 +47,17 @@ def _parse_pair(content):
 
 
 def targets(model_path=None, types=None, condition=None, ledger_path=None,
-            export_format="csv", export_path=None, progress=None):
+            export_format="csv", export_path=None, progress=None, analysis_context=None):
     log = progress or (lambda s: sys.stderr.write(str(s) + "\n"))
     import ledger as _ledger
-    if not ledger_path:
-        ledger_path = _ledger.model_ledger_path(model_path)  # 2026-08-31：默认=该模型自己的账本
-    rows, corrupt = _ledger.load_rows(ledger_path)
+    query = _ledger.query_ledger(model=model_path, path=ledger_path,
+                                 analysis_context=analysis_context)
+    rows, corrupt = query["results"], query["corrupt"]
     types = [TYPE_ALIASES.get(t, t) for t in (types or ["essentiality", "synthetic_lethal", "secretion"])]
     types = [t for t in types if t in TYPE_ORDER]
 
-    # 模型过滤：精确匹配优先，退化到 basename 匹配（防路径大小写/斜杠差异）
-    def model_match(r):
-        if model_path is None:
-            return True
-        rm = r.get("model") or ""
-        if rm == model_path:
-            return True
-        return os.path.basename(rm) == os.path.basename(model_path)
-
     selected = [r for r in rows
-                if r.get("type") in types and model_match(r)
+                if r.get("type") in types
                 and (condition is None or str(r.get("condition") or "").lower()
                      == str(condition).lower())]
     selected.sort(key=lambda r: (TYPE_ORDER.index(r["type"]), r.get("prediction_id") or ""))
@@ -75,14 +67,15 @@ def targets(model_path=None, types=None, condition=None, ledger_path=None,
     for i, r in enumerate(selected, 1):
         rtype = r["type"]
         content = r.get("content") or ""
+        subject = r.get("subject") or {}
         genes, met_ids, gmp = [], [], None
         if rtype == "essentiality":
-            genes = [g for g in [_parse_gene(content)] if g]
+            genes = [g for g in [subject.get("gene") or _parse_gene(content)] if g]
         elif rtype == "synthetic_lethal":
-            genes = _parse_pair(content)
+            genes = subject.get("genes") or _parse_pair(content)
         elif rtype == "secretion":
             met, mp = _parse_secretion(content)
-            met_ids = [met] if met else []
+            met_ids = [subject.get("metabolite") or met] if (subject.get("metabolite") or met) else []
             gmp = mp
         out_rows.append({
             "target_id": f"T{i:04d}", "type": rtype, "genes": genes, "met_ids": met_ids,
@@ -98,7 +91,7 @@ def targets(model_path=None, types=None, condition=None, ledger_path=None,
     # 计数闭合：exported per type == 账本对应 type 计数（同过滤口径）
     ledger_counts = {}
     for r in rows:
-        if model_match(r) and (condition is None or str(r.get("condition") or "").lower()
+        if (condition is None or str(r.get("condition") or "").lower()
                                == str(condition).lower()):
             ledger_counts[r.get("type")] = ledger_counts.get(r.get("type"), 0) + 1
     exported_counts = {}
@@ -125,6 +118,18 @@ def targets(model_path=None, types=None, condition=None, ledger_path=None,
             for r in out_rows:
                 w.writerow({**r, "genes": ";".join(r["genes"]),
                             "met_ids": ";".join(r["met_ids"])})
+    with open(export_path, "rb") as handle:
+        output_sha = "sha256:" + hashlib.sha256(handle.read()).hexdigest()
+    meta_path = export_path + ".meta.json"
+    metadata = {"schema": "gem.targets-meta.v1", "export_sha256": output_sha,
+                "model_sha256": _ledger.sbml_sha256(model_path) if model_path else None,
+                "identity_excluded": query["identity_excluded"],
+                "rows": [{"target_id": out["target_id"], "prediction_uid": source.get("prediction_uid"),
+                          "model_sha256": source.get("model_sha256"),
+                          "analysis_context": source.get("analysis_context")}
+                         for out, source in zip(out_rows, selected)]}
+    with open(meta_path, "w", encoding="utf-8") as handle:
+        json.dump(metadata, handle, ensure_ascii=False, indent=2)
     log(f"[targets] exported {len(out_rows)} rows -> {export_path}")
 
     return {
@@ -135,6 +140,7 @@ def targets(model_path=None, types=None, condition=None, ledger_path=None,
         "corrupt_rows": len(corrupt),
         "export_format": export_format,
         "export_path": export_path,
+        "meta_path": meta_path, "export_sha256": output_sha,
         "rows": out_rows,
         "note": "供下游引物/编辑工具直接输入的规范导出；引物/质粒设计本身不在本插件范围（方案文件明确）",
     }

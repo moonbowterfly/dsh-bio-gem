@@ -75,17 +75,26 @@ def op_model_info(args):
     try:
         import ledger as _ledger
         # 2026-08-31：一个模型一个账本——缺省（无 ledger_path）定位到该模型自己的账本
-        ledger_summary = _ledger.ledger_summary(path=args.get("ledger_path"), model=path)
+        ledger_summary = _ledger.ledger_summary(path=args.get("ledger_path"), model=path,
+                                                analysis_context=args.get("analysis_context"))
         n_unverified = ledger_summary["by_status"].get("unverified", 0)
         own = ledger_summary.get("own_model_entries")
         if ledger_summary["total"]:
-            ledger_context = (f"预测账本：本模型 {own} 条（一个模型一个账本，账本文件按模型名分），"
+            ledger_context = (f"预测账本：本模型内容身份匹配 {own} 条，"
                               f"{n_unverified} 条 unverified："
                               "全部为模型推导预测（essentiality/phenotype 等），实验或文献兑现前不应当作事实引用；"
                               "状态分布即预测可信度基率，回填后 by_status 向 literature_supported/"
                               "experimentally_verified 迁移。")
     except Exception as e:
         ledger_summary = {"error": str(e)[:120]}
+    from model_card import load_card
+    card = load_card(path)
+    effective_validation = [
+        {"medium_name": med.get("medium_name"),
+         "claimed": med.get("claimed_validation_status"),
+         "effective": med.get("effective_validation_status"),
+         "audit": med.get("audit_status")}
+        for med in (card or {}).get("supported_mediums", [])]
     return {"ok": True, "result": {
         "path": path,
         "genes": len(m.genes),
@@ -98,6 +107,8 @@ def op_model_info(args):
         "replicons": dict(repl),
         "objective": m.objective.name or m.objective.expression is not None and "set" or "None",
         "ledger_summary": ledger_summary,
+        "model_card": card,
+        "effective_validation": effective_validation,
         **({"ledger_context": ledger_context} if ledger_context else {}),
     }}
 
@@ -183,6 +194,8 @@ def op_phenotype_fix(args):
     r = phenotype_fix(model, phenotype_table=args.get("phenotype_table"),
                       medium=args.get("medium"), max_add=args.get("max_add", 20),
                       out=args.get("out"), ledger_path=args.get("ledger_path"))
+    if r.get("error"):
+        return {"ok": False, "code": "PHENOTYPE_NOT_EVALUATED", "error": r["error"], "detail": r}
     return {"ok": True, "result": r}
 
 
@@ -419,12 +432,14 @@ def op_ledger(args):
     lp = args.get("ledger_path")
     if action == "list":
         return {"ok": True, "result": _ledger.query_ledger(
-            limit=args.get("limit"), offset=args.get("offset", 0), path=lp)}
+            limit=args.get("limit"), offset=args.get("offset", 0), path=lp,
+            model=args.get("model"), analysis_context=args.get("analysis_context"))}
     if action == "query":
         return {"ok": True, "result": _ledger.query_ledger(
             rtype=args.get("type"), status=args.get("status"), condition=args.get("condition"),
             model=args.get("model"), limit=args.get("limit"), offset=args.get("offset", 0),
-            deprecated=args.get("deprecated"), path=lp)}
+            deprecated=args.get("deprecated"), path=lp,
+            analysis_context=args.get("analysis_context"))}
     if action == "update":
         r = _ledger.update_row(args.get("prediction_id"), status=args.get("status"),
                                source_refs=args.get("source_refs"),
@@ -524,7 +539,7 @@ def op_targets(args):
     return {"ok": True, "result": targets(
         model_path=args.get("model"), types=args.get("types"), condition=args.get("condition"),
         ledger_path=args.get("ledger_path"), export_format=args.get("export_format", "csv"),
-        export_path=args.get("export_path"))}
+        export_path=args.get("export_path"), analysis_context=args.get("analysis_context"))}
 
 
 OPS["targets"] = op_targets

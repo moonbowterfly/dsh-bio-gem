@@ -144,8 +144,13 @@ def double_knockout(model_path, medium=None, max_pairs=5000, export_csv=None,
             lineage_v = ((_load_card(model_path) or {}).get("model_lineage") or {}).get("version")
             cond = preset or (f"custom({len(resolved)} EX)" if resolved else "unspecified")
             pair_rows = [{"gene_a": r["pair"][0], "gene_b": r["pair"][1]} for r in results]
+            context = _ledger.make_analysis_context(
+                model_path, m, "synthetic_lethal", "gem.double-knockout.v1",
+                parameters={"max_pairs": max_pairs, "growth_epsilon": EPS,
+                            "medium_unresolved": unresolved, "lineage_version": lineage_v})
             reg = _ledger.register_synthetic_lethal(model_path, pair_rows, condition=cond,
-                                                    lineage_version=lineage_v, path=ledger_path)
+                                                    lineage_version=lineage_v, path=ledger_path,
+                                                    analysis_context=context)
             log(f"[dk] ledger: appended={reg['appended']} skipped={reg['skipped_duplicates']}")
         except Exception as e:
             sys.stderr.write(f"[dk] ledger registration WARN: {type(e).__name__}: {e}\n")

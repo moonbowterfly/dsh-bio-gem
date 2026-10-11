@@ -5,6 +5,7 @@
 import re
 import os
 import json
+import math
 import sys
 import cobra
 
@@ -203,61 +204,20 @@ class Validator:
         return rep
 
     # ------------------------------------------------------------------ G6
+    # GM-1（2026-10-07 G 系列一期）：G6 重做为 ATP 维持耗散闸门，方法 v2。
+    # v1 缺陷：demand 建了但 objective 仍是 biomass（读到的是 biomass 通量）；
+    #         只关 lower_bound（分泌仍开放）；不校验 solver status。
+    # v2 实现（含无副作用纪律与完整元数据）移至 energy_gate.py（同目录，仅 stdlib+cobra）。
     @register_gate("G6")
     def g6_atp_leak(self, context=None):
-        """ATP 泄漏测试（MEMOTE 核心测试；G3 all-closed 的必要不充分检查）：
-        全关交换后最大化 ATP 代谢物的净消耗（demand），通量 > 0.01 → WARN。
-        补洞后必跑（context.post_gapfill 时不再跳过）。
-        P1-5 修复（2026-08-31 LBA9402 会话实测）：CarveMe 模型 ATP id 为 M_atp_c，
-        旧匹配只看 atp_c/cpd00002_c0 -> 误 SKIP「未找到 ATP」——扩展命名模式 + SKIP 时列出尝试模式与模型内候选。
-        P2-9 修复（2026-09-10 iNX1344 实测）：MetaCyc/BioCyc 导出模型 ATP 为 M00002_c
-        （name='ATP'，formula 为去质子化变体），仍不在模式表内 → 二次误 SKIP（G6 直接失效）。
-        改为三级通用解析：id 模式 → name 匹配 → formula 匹配，跨 ID 体系自适应。"""
-        m = self.m
-        atp_patterns = ("atp_c", "cpd00002_c0", "m_atp_c", "atp_c0", "cpd00002", "atp",
-                        "m00002", "m00002_c", "m00002_c0")
-        cands = [x for x in m.metabolites if (x.id or "").lower() in atp_patterns]
-        atp_source = "id_pattern"
-        if not cands:
-            # 回退 1：name 匹配（跨 ID 体系最稳的信号；排除 dATP 等衍生物）
-            cands = [x for x in m.metabolites
-                     if (x.name or "").strip().upper() == "ATP"
-                     or ("atp" in (x.name or "").lower() and "datp" not in (x.name or "").lower())]
-            atp_source = "name_match"
-        if not cands:
-            # 回退 2：分子式（含去质子化变体——部分模型 formula 非标准形式）
-            cands = [x for x in m.metabolites
-                     if (x.formula or "").replace(" ", "") in ("C10H16N5O13P3", "C10H12N5O13P3")]
-            atp_source = "formula_match"
-        cyto = [x for x in cands if x.compartment in ("c0", "c")]
-        atp_c = (cyto or cands or [None])[0]
-        if atp_c is None:
-            atp_like = sorted({x.id for x in m.metabolites
-                               if "atp" in (x.id or "").lower() or "atp" in (x.name or "").lower()})[:10]
-            return {"status": "SKIP",
-                    "reason": "未找到 ATP 代谢物（id 模式 / name 匹配 / formula 匹配三级回退均未命中）",
-                    "tried_patterns": list(atp_patterns),
-                    "atp_like_ids_in_model": atp_like,
-                    "note": "SKIP 系命名口径未命中（非模型缺陷证明）；若模型含 ATP 但三级回退均未命中，"
-                            "请在模型内显式标注 atp 角色后重跑"}
-        dm = cobra.Reaction("DM_gem_atp_leak", name="G6 ATP 泄漏检测 demand",
-                            lower_bound=0.0, upper_bound=1000.0)
-        dm.add_metabolites({atp_c: -1})
-        m.add_reactions([dm])
-        try:
-            with m:
-                for r in m.reactions:
-                    if r.id.startswith(EX_PREFIX) or r.boundary:
-                        r.lower_bound = 0.0
-                v = m.optimize().objective_value
-        finally:
-            m.remove_reactions([dm])
-        leak = abs(v)
-        status = "PASS" if leak <= 0.01 else "WARN"
-        return {"status": status, "atp_leak_flux": round(leak, 6),
-                "atp_metabolite_found": atp_c.id, "atp_resolved_by": atp_source,
-                "threshold": 0.01, "post_gapfill": bool((context or {}).get("post_gapfill")),
-                "note": "全关交换后 ATP demand 通量应≈0；>0.01 提示能量循环泄漏（L3 MILP 补洞最可能引入）"}
+        """ATP 维持耗散闸门（方法 v2，见 energy_gate.G6_METHOD_VERSION）。
+
+        主检查：全边界 (0,0) 关闭后最大化 ATP+H2O→ADP+Pi+H+ 耗散通量；
+        仅 optimal 且 raw ≤ 有效容差才 PASS，> 容差 FAIL（传入 overall）。
+        旧 atp_leak_flux 字段保留但语义为 v2 耗散通量（见返回 atp_leak_flux_meaning）。
+        """
+        from energy_gate import g6_atp_maintenance
+        return g6_atp_maintenance(self, context=context)
 
     # ------------------------------------------------------------------ G4
     def g4_phenotype(self, table_path=None, substrates=None, medium=None, carbon_mode="supplement"):
@@ -286,6 +246,7 @@ class Validator:
         ex_idx = build_ex_index(m)
         results = []
         matched = 0
+        solve_errors = []
         for sub, pub in rows:
             exid = match_ex(sub, ex_idx)
             # 基底：medium（supplement）或去碳后加底物（sole）
@@ -298,29 +259,43 @@ class Validator:
                             del med2[rid]
             if exid and exid in m.reactions:
                 med2[exid] = -10.0
-            for r in m.reactions:
-                if r.id.startswith(EX_PREFIX) or r.boundary:
-                    r.lower_bound = 0.0
-            for rid, lb in med2.items():
-                if rid in m.reactions:
-                    m.reactions.get_by_id(rid).lower_bound = lb
             with m:
-                g = m.optimize().objective_value
-            pred = g > 1e-6
-            ok = (pred == bool(pub))
+                for rxn in m.reactions:
+                    if rxn.id.startswith(EX_PREFIX) or rxn.boundary:
+                        rxn.lower_bound = 0.0
+                for rid, lb in med2.items():
+                    if rid in m.reactions:
+                        m.reactions.get_by_id(rid).lower_bound = lb
+                applied = {rxn.id: [rxn.lower_bound, rxn.upper_bound] for rxn in m.reactions
+                           if rxn.boundary or rxn.id.startswith("EX_")}
+                try:
+                    sol = m.optimize()
+                    g = float(sol.objective_value) if sol.status == "optimal" else None
+                    if g is None or not math.isfinite(g):
+                        raise ValueError(f"solver status={sol.status}, objective={sol.objective_value}")
+                except Exception as error:
+                    g = None
+                    solve_errors.append({"substrate": sub, "reason": f"{type(error).__name__}: {error}"})
+            pred = g > 1e-6 if g is not None else None
+            ok = (pred == bool(pub)) if pred is not None else False
             if ok:
                 matched += 1
-            results.append({"substrate": sub, "published": int(pub), "predicted": int(pred),
-                            "growth": round(g, 6), "exchange": exid or None, "match": bool(ok),
+            results.append({"substrate": sub, "published": int(pub),
+                            "predicted": int(pred) if pred is not None else None,
+                            "growth": round(g, 6) if g is not None else None,
+                            "exchange": exid or None, "match": bool(ok),
+                            "applied_medium_bounds": applied,
                             # 口径声明（只增）：每底物 growth 为单点 FBA 值
                             "units": "1/h",
                             "point_value_note": "单点 FBA 值，非解空间硬结论；条件对比请用 gem_fluxscan 区间分离判定"})
         rep = {
-            "status": "PASS" if rows and matched / len(rows) >= 0.8 else ("WARN" if rows else "SKIP"),
+            "status": ("ERROR" if solve_errors else
+                       ("PASS" if rows and matched / len(rows) >= 0.8 else ("WARN" if rows else "SKIP"))),
             "carbon_mode": carbon_mode,
             "matched": matched, "total": len(rows),
             "rate": round(matched / len(rows), 4) if rows else None,
             "results": results,
+            "solve_errors": solve_errors,
         }
         return rep
 
@@ -393,11 +368,20 @@ class Validator:
             report["g5"] = self.g5_essentiality(essential_test, resolved_med, reference_essential)
         else:
             report["g5"] = {"status": "SKIP", "reason": "no essential_test provided"}
-        # 总判定：G1/G2/G3/G6（FATAL 才 FAIL；G6 WARN 级不阻塞但补洞后必查）
-        blocked = ["g1", "g2", "g3"]
+        # 总判定：G1/G2/G3/G6（FATAL 才 FAIL）
+        # GM-1（2026-10-07）：G6 v2 起 FAIL 传入 overall；ERROR（solver 异常）同样不得判 PASS。
+        # A missing or ambiguous G6 measurement cannot certify a PASS.
+        blocked = ["g1", "g2", "g3", "g6"]
         fails = [k for k in blocked if report[k]["status"] == "FAIL"]
-        warns = [k for k in blocked if report[k]["status"] == "WARN"]
-        report["overall"] = "FAIL" if fails else ("WARN" if warns else "PASS")
+        errors = [k for k in blocked if report[k]["status"] == "ERROR"]
+        warns = [k for k in blocked if report[k]["status"] in ("WARN", "SKIP")]
+        report["overall"] = "FAIL" if (fails or errors) else ("WARN" if warns else "PASS")
+        if errors and not fails:
+            report["overall_fail_reason"] = ",".join(f"{k}=ERROR" for k in errors)
+        if warns:
+            report["overall_warn_reasons"] = [
+                {"gate": k, "status": report[k]["status"], "reason": report[k].get("reason")}
+                for k in warns]
         report["blocking"] = blocked
         return report
 

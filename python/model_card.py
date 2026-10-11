@@ -5,17 +5,133 @@
 # 兼容: build.py 旧卡（无 schema 字段）读取时即时迁移到 v2（新增字段缺失不报错）。
 # units: growth_rate 一律 1/h（比生长速率；biomass 反应 gDW 归一化口径，数值 = μ）。
 # 2026-09-21 由 mmol/gDW/h 演进为 1/h：数值不变、生物语义更准（schema 向后兼容，旧卡照读）。
+# GM-2（2026-10-07 G 系列一期）：验证声明由实际 gate 结果推导（derive_validation_claim）；
+#       旧卡读取时只读审计（audit_card_claims），不改写文件、不追认 PASS。
 import os
 import json
 import time
+import copy
+import hashlib
+import re
 
 CARD_SUFFIX = ".card.json"
 SCHEMA = "v2"
 GROWTH_UNITS = "1/h"
+CLAIM_POLICY_VERSION = "gem.card_claim.v3"
 
 
 def _now():
     return time.strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def _model_sha256(path):
+    if not path or not os.path.isfile(path):
+        return None
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return "sha256:" + digest.hexdigest()
+
+
+def medium_identity(base_bounds, mode, test_results=None):
+    """Hash applied base and per-substrate bounds, keeping the condition separate from a label."""
+    payload = {"mode": mode, "base_bounds": base_bounds,
+               "tests": [{"substrate": row.get("substrate"),
+                          "applied_medium_bounds": row.get("applied_medium_bounds")}
+                         for row in (test_results or [])]}
+    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True,
+                           separators=(",", ":"), allow_nan=False)
+    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def derive_validation_claim(g3_status, g4_evidence=None, *, expected_model_sha256=None,
+                            expected_medium_identity=None):
+    """GM-2：验证标签由实际 gate 结果推导，不由补洞数/原生模型/文件存在推导。
+
+    g4_evidence: None（未跑）或 dict，至少：
+      status: G4 实跑状态（PASS/WARN/FAIL/SKIP）
+      matched/total: 表型核对命中数/总数
+      reference_identity: 参考数据身份（如表型表 sha256）
+    规则：
+      G3 PASS + G4 PASS + 有参考身份与检测数 → verified_G3_G4
+      G3 PASS + G4 SKIP/未跑/WARN/FAIL       → verified_G3_only（G4 未通过如实呈现）
+      G3 未 PASS                              → unverified
+    返回 {claim, claim_policy_version, g3_status, g4, unsupported_reasons}。"""
+    g4 = None
+    if isinstance(g4_evidence, dict):
+        g4 = {
+            "status": g4_evidence.get("status"),
+            "matched": g4_evidence.get("matched"),
+            "total": g4_evidence.get("total"),
+            "reference_identity": g4_evidence.get("reference_identity"),
+            "model_sha256": g4_evidence.get("model_sha256"),
+            "medium_identity": g4_evidence.get("medium_identity"),
+        }
+    reasons = []
+    g3_pass = g3_status == "PASS"
+    g4_pass = bool(g4 and g4.get("status") == "PASS")
+    g4_evidenced = bool(g4 and isinstance(g4.get("total"), int) and g4["total"] > 0
+                       and isinstance(g4.get("matched"), int)
+                       and 0 <= g4["matched"] <= g4["total"]
+                       and isinstance(g4.get("reference_identity"), str)
+                       and re.fullmatch(r"sha256:[0-9a-f]{64}", g4["reference_identity"])
+                       and expected_model_sha256 and g4.get("model_sha256") == expected_model_sha256
+                       and expected_medium_identity and g4.get("medium_identity") == expected_medium_identity)
+    if g3_pass and g4_pass and g4_evidenced:
+        claim = "verified_G3_G4"
+    elif g3_pass:
+        claim = "verified_G3_only"
+        if g4 is None:
+            reasons.append("G4 未运行（无表型参考输入）——只能声明 G3-only")
+        elif g4.get("status") == "SKIP":
+            reasons.append("G4 SKIP——只能声明 G3-only")
+        elif g4.get("status") in ("WARN", "FAIL"):
+            reasons.append(f"G4 {g4.get('status')}——不能升格为 G3+G4")
+        elif not g4_evidenced:
+            reasons.append("G4 结果缺参考数据身份或检测数——不能声明 G3+G4")
+    else:
+        claim = "unverified"
+        reasons.append(f"G3 {g3_status}——生长真实性未通过")
+    return {"claim": claim, "claim_policy_version": CLAIM_POLICY_VERSION,
+            "g3_status": g3_status, "g4": g4, "unsupported_reasons": reasons}
+
+
+def audit_card_claims(card, model_path=None):
+    """GM-2：旧卡只读审计——不改写文件、不追认 PASS。
+
+    对 supported_mediums 每项核对 validation_status 与卡内实际 G4 证据：
+      - 声明 verified_G3_G4 但卡内无 G4 明细（verified_phenotypes 无参考身份/检测数）
+        → 该项标记 legacy_claim_unconfirmed。
+      - 声明 verified_G3 / verified_G3_only → 一致（G3-only 语义，无 G4 断言）。
+    返回 {per_medium: [...], claim_policy_version}；card 为 None → None。"""
+    if not isinstance(card, dict):
+        return None
+    current_hash = _model_sha256(model_path)
+    out = []
+    for med in card.get("supported_mediums") or []:
+        if not isinstance(med, dict):
+            continue
+        claim = med.get("validation_status")
+        entry = {"medium_name": med.get("medium_name"), "claimed": claim}
+        evidence = med.get("validation_evidence") or {}
+        g3 = (evidence.get("g3") or {}).get("status")
+        model_hash = evidence.get("model_sha256")
+        medium_identity = med.get("medium_identity")
+        derived = derive_validation_claim(
+            g3, evidence.get("g4"), expected_model_sha256=current_hash,
+            expected_medium_identity=medium_identity)
+        valid_g3 = (g3 == "PASS" and current_hash and model_hash == current_hash
+                    and medium_identity and evidence.get("medium_identity") == medium_identity)
+        if valid_g3 and claim == derived["claim"]:
+            entry["audited"] = "consistent"
+            entry["effective"] = claim
+        else:
+            entry["audited"] = "legacy_claim_unconfirmed"
+            entry["effective"] = "legacy_claim_unconfirmed"
+            entry["reason"] = "缺少与当前模型和培养基一致的关卡证据；保留原声明但不背书"
+        out.append(entry)
+    return {"claim_policy_version": CLAIM_POLICY_VERSION, "per_medium": out}
 
 
 def card_path_for(model_path):
@@ -27,13 +143,28 @@ def load_card(model_path):
     if not os.path.exists(p):
         return None
     with open(p, encoding="utf-8") as f:
-        return json.load(f)
+        card = json.load(f)
+    result = copy.deepcopy(card)
+    audit = audit_card_claims(result, model_path=model_path)
+    result["validation_audit"] = audit
+    by_index = audit["per_medium"] if audit else []
+    for medium, item in zip(result.get("supported_mediums") or [], by_index):
+        medium["claimed_validation_status"] = item["claimed"]
+        medium["effective_validation_status"] = item["effective"]
+        medium["audit_status"] = item["audited"]
+    return result
 
 
 def save_card(model_path, card):
     p = card_path_for(model_path)
+    stored = copy.deepcopy(card)
+    stored.pop("validation_audit", None)
+    for medium in stored.get("supported_mediums") or []:
+        if isinstance(medium, dict):
+            for key in ("claimed_validation_status", "effective_validation_status", "audit_status"):
+                medium.pop(key, None)
     with open(p, "w", encoding="utf-8") as f:
-        json.dump(card, f, ensure_ascii=False, indent=2)
+        json.dump(stored, f, ensure_ascii=False, indent=2)
     return p
 
 
@@ -106,9 +237,10 @@ def append_operation(model_path, operation, reactions_added=0, reactions_removed
     return card
 
 
-def set_verified_phenotypes(model_path, phenotype_result, semantics="sole"):
+def set_verified_phenotypes(model_path, phenotype_result, semantics="sole", reference_identity=None):
     """phenotype_fix 结果写入 card.verified_phenotypes。
-    phenotype_result: phenotype_fix() 返回（含 before/after/after_results/model）。"""
+    phenotype_result: phenotype_fix() 返回（含 before/after/after_results/model）。
+    reference_identity: 表型参考数据身份（如 TSV 的 sha256）——GM-2 起记录，供声明审计。"""
     card = load_card(model_path)
     if card is None:
         return None
@@ -120,12 +252,41 @@ def set_verified_phenotypes(model_path, phenotype_result, semantics="sole"):
                      "predicted": r.get("predicted"), "growth": r.get("growth"),
                      "exchange": r.get("exchange"), "match": r.get("match"),
                      "source": "phenotype_fix/G4-sole"})
+    current_hash = _model_sha256(model_path)
+    gate_report = phenotype_result.get("after_gate_report") or {}
+    g3 = gate_report.get("g3") or {}
+    g4 = gate_report.get("g4") or {}
+    base_bounds = phenotype_result.get("resolved_medium_bounds")
+    mid = medium_identity(base_bounds, semantics, g4.get("results") or []) if base_bounds is not None else None
+    evidence_g4 = {"status": g4.get("status"), "matched": g4.get("matched"),
+                   "total": g4.get("total"), "reference_identity": reference_identity,
+                   "model_sha256": current_hash, "medium_identity": mid,
+                   "carbon_mode": semantics}
+    claim = derive_validation_claim(g3.get("status"), evidence_g4,
+                                    expected_model_sha256=current_hash,
+                                    expected_medium_identity=mid)
     card["verified_phenotypes"] = {
         "semantics": semantics, "units": GROWTH_UNITS,
         "matched": after.get("matched"), "total": after.get("total"),
         "rate": after.get("rate"), "source": "gem_phenotype", "updated_at": _now(),
+        "reference_identity": reference_identity,
+        "model_sha256": current_hash, "medium_identity": mid,
+        "gate_status": g4.get("status"), "claim": claim["claim"],
         "results": rows,
     }
+    condition_name = (phenotype_result.get("medium_preset") or "custom") + "/" + semantics
+    supported = card.setdefault("supported_mediums", [])
+    entry = next((item for item in supported if item.get("medium_identity") == mid
+                  and item.get("medium_name") == condition_name), None)
+    if entry is None:
+        entry = {"medium_name": condition_name}
+        supported.append(entry)
+    entry.update({"medium_identity": mid, "validation_status": claim["claim"],
+                  "validation_evidence": {"policy": CLAIM_POLICY_VERSION,
+                                          "model_sha256": current_hash,
+                                          "medium_identity": mid,
+                                          "g3": g3, "g4": evidence_g4,
+                                          "unsupported_reasons": claim["unsupported_reasons"]}})
     save_card(model_path, card)
     return card
 

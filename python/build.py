@@ -9,6 +9,8 @@ import sys
 import tempfile
 import time
 import datetime
+import configparser
+import uuid
 
 # Python -I isolated 模式下脚本目录不进 sys.path——显式插入以导入同目录模块
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -99,12 +101,60 @@ def _active_medium(m):
             if r.id.startswith("EX_") and r.lower_bound < 0}
 
 
-def _media_db_exchanges(m, medium_name="M9", default_lb=-10.0):
+def _carveme_resources(venv=None):
+    """Resolve the installed CarveMe files used by the default protein/M9 command."""
+    package_dir = os.path.join(venv or DEFAULT_CARVE_VENV, "Lib", "site-packages", "carveme")
+    config_path = os.path.join(package_dir, "config.cfg")
+    cfg = configparser.ConfigParser()
+    if not cfg.read(config_path, encoding="utf-8"):
+        return None
+    def resource(section, key):
+        try:
+            return os.path.join(package_dir, cfg.get(section, key).replace("/", os.sep))
+        except (configparser.Error, ValueError):
+            return None
+    return {
+        "config": config_path,
+        "media_table": resource("input", "media_library"),
+        "databases": {
+            "diamond_db": resource("generated", "diamond_db"),
+            "default_universe": resource("generated", "default_universe"),
+            "gene_annotations": resource("generated", "gene_annotations"),
+            "bigg_gprs": resource("generated", "bigg_gprs"),
+        },
+    }
+
+
+def _diamond_version(venv=None):
+    exe = os.path.join(venv or DEFAULT_CARVE_VENV, "Scripts", "diamond.exe")
+    try:
+        run = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=60)
+        return (run.stdout or run.stderr or "").strip() if run.returncode == 0 else "unknown"
+    except (OSError, subprocess.TimeoutExpired):
+        return "unknown"
+
+
+def _build_identity(proteins, venv=None):
+    from fingerprint import build_cache_identity
+    resources = _carveme_resources(venv)
+    if resources is None:
+        return None
+    base = venv or DEFAULT_CARVE_VENV
+    return build_cache_identity(
+        proteins, "carveme", _carve_version(venv), diamond_version=_diamond_version(venv),
+        database_paths=resources["databases"], config_path=resources["config"],
+        media_table_path=resources["media_table"],
+        engine_path=os.path.join(base, "Scripts", "carve.exe"),
+        diamond_path=os.path.join(base, "Scripts", "diamond.exe"),
+        params={"input_type": "protein", "gapfill_medium": "M9", "carve_cli": ["-g", "M9"]})
+
+
+def _media_db_exchanges(m, medium_name="M9", default_lb=-10.0, venv=None):
     """从 carveme 自带 media_db.tsv 提取介质成分 -> 模型 EX 交换字典（精确介质）。"""
     import csv
-    db = os.path.join(DEFAULT_CARVE_VENV, "Lib", "site-packages", "carveme",
-                      "data", "input", "media_db.tsv")
-    if not os.path.exists(db):
+    resources = _carveme_resources(venv)
+    db = resources["media_table"] if resources else None
+    if not db or not os.path.exists(db):
         return _active_medium(m)  # 退化：全部开放交换
     comps = set()
     with open(db, encoding="utf-8") as f:
@@ -146,17 +196,33 @@ def build(input_spec, name=None, medium=None, venv=None, out_dir=None, progress_
         raise RuntimeError("CarveMe 运行时不可用：" + str(boot.get("error")))
     _log(progress_path, {"event": "bootstrap_ok", "action": boot.get("action")})
 
-    # 1) carve（自带 M9 gapfill，CarveMe 原生最小培养基）
+    # 1) CarveMe cache: every dependency and the saved output bytes must match.
+    from fingerprint import cache_hit, write_cache_record
+    base_xml = out_xml
+    sidecar = base_xml + ".fingerprint.json"
+    identity = _build_identity(proteins, venv)
+    hit = cache_hit(sidecar, identity, base_xml)
     st = time.time()
-    if not (os.path.exists(out_xml) and os.path.getmtime(out_xml) > os.path.getmtime(proteins)):
-        run_carve(proteins, out_xml, venv=venv, progress_path=progress_path,
-                  gapfill_medium="M9")
+    if not hit["hit"]:
+        _log(progress_path, {"event": "carve_cache_miss", "reason": hit["reason"],
+                             "fingerprint": identity.get("fingerprint") if identity else None})
+        temp_xml = os.path.join(out_dir, f".{name}.carve-{uuid.uuid4().hex}.xml")
+        try:
+            run_carve(proteins, temp_xml, venv=venv, progress_path=progress_path,
+                      gapfill_medium="M9")
+            if not os.path.isfile(temp_xml):
+                raise RuntimeError("CarveMe returned without an output SBML file")
+            os.replace(temp_xml, base_xml)
+        finally:
+            if os.path.exists(temp_xml):
+                os.unlink(temp_xml)
     else:
-        _log(progress_path, {"event": "carve_skip_cached"})
+        _log(progress_path, {"event": "carve_skip_cached", "fingerprint": hit["fingerprint"],
+                             "output_sha256": hit["output_sha256"]})
 
     from silentio import silent_read_sbml
     m1 = silent_read_sbml(out_xml)
-    med_m9 = _media_db_exchanges(m1, "M9")  # 精确 M9 成分（非全开近似）
+    med_m9 = _media_db_exchanges(m1, "M9", venv=venv)  # 精确 M9 成分（非全开近似）
 
     # 2) validate G1-G3：M9 介质（构建产物实测）
     from validate import validate_model
@@ -193,6 +259,7 @@ def build(input_spec, name=None, medium=None, venv=None, out_dir=None, progress_
                                      "growth_after": g3_user.get("growth_medium")})
         target = {
             "medium": medium, "resolved_exchanges": len(resolved),
+            "resolved_bounds": resolved,
             "unresolved": unresolved,
             "g3": user_rep["g3"]["status"],
             "growth": user_rep["g3"].get("growth_medium"),
@@ -200,11 +267,26 @@ def build(input_spec, name=None, medium=None, venv=None, out_dir=None, progress_
         }
         # 若 M9 已 PASS 而用户介质 FAIL：诚实保留（模型可用介质=M9）
     dt = round(time.time() - st, 1)
+    if out_xml != base_xml:
+        rep_m9 = validate_model(out_xml, medium=med_m9, reference_growth=None)
+        g3_m9 = rep_m9["g3"]
     # 4) 模型卡（schema v2 起步：supported_mediums 由验证结果得出）
+    # GM-2（2026-10-07）：验证标签由实际 gate 结果推导（derive_validation_claim），
+    # 不由补洞数推导。build 不跑 G4（无表型参考）→ G3 PASS 只能声明 verified_G3_only。
+    from model_card import derive_validation_claim, medium_identity
+    from fingerprint import file_sha256
+    final_model_hash = file_sha256(out_xml)
+    m9_identity = medium_identity(med_m9, "growth")
+    m9_evidence = {"policy": "gem.card_claim.v3", "model_sha256": final_model_hash,
+                   "medium_identity": m9_identity, "g3": rep_m9["g3"], "g4": None,
+                   "gate_details": {k: rep_m9[k] for k in ("g0", "g1", "g2", "g3", "g6")}}
     supported = [
         {"medium_name": "M9", "ex_reactions": sorted(med_m9),
+         "resolved_bounds": med_m9, "medium_identity": m9_identity,
+         "validation_evidence": m9_evidence,
          "growth_rate": g3_m9.get("growth_medium"), "units": "1/h",
-         "validation_status": "verified_G3" if g3_m9.get("status") == "PASS" else "unverified"},
+         "validation_status": derive_validation_claim(
+             g3_m9.get("status"), g4_evidence=None)["claim"]},
     ]
     if target and target.get("g3") == "PASS":
         tname = "custom"
@@ -212,8 +294,16 @@ def build(input_spec, name=None, medium=None, venv=None, out_dir=None, progress_
             tname = medium.get("medium_name") or "custom"
         supported.append({
             "medium_name": tname, "ex_reactions": target.get("resolved_exchanges"),
+            "resolved_bounds": target.get("resolved_bounds"),
+            "medium_identity": medium_identity(target.get("resolved_bounds"), "growth"),
+            "validation_evidence": {
+                "policy": "gem.card_claim.v3", "model_sha256": final_model_hash,
+                "medium_identity": medium_identity(target.get("resolved_bounds"), "growth"),
+                "g3": user_rep["g3"], "g4": None,
+                "gate_details": {k: user_rep[k] for k in ("g0", "g1", "g2", "g3", "g6")}},
             "growth_rate": target.get("growth"), "units": "1/h",
-            "validation_status": "verified_G3_G4" if target.get("gapfixes_applied", 0) == 0 else "verified_G3_only",
+            "validation_status": derive_validation_claim(
+                "PASS", g4_evidence=None)["claim"],
         })
     # 模型卡（schema v2：init_card 统一基座 —— lineage v0.1.0 起始 + changelog=[build]）
     from model_card import init_card
@@ -223,12 +313,22 @@ def build(input_spec, name=None, medium=None, venv=None, out_dir=None, progress_
         carve_cmd="carve INPUT -o OUT -g M9",
         started=datetime.datetime.now().isoformat(timespec="seconds"),
         elapsed_s=dt, model=out_xml,
+        model_sha256=final_model_hash,
         validations_m9={k: rep_m9[k]["status"] for k in ("g1", "g2", "g3")},
+        gate_details_m9={k: rep_m9[k] for k in ("g0", "g1", "g2", "g3", "g6")},
         growth_g3_m9=g3_m9.get("growth_medium"),
         m9_exchanges=len(med_m9),
         target=target,
+        gate_details_target=({k: user_rep[k] for k in ("g0", "g1", "g2", "g3", "g6")}
+                             if user_rep else None),
         supported_mediums=supported,
         mapping={"protein_input": proteins})
+    if not hit["hit"] and identity:
+        record = write_cache_record(sidecar, identity, base_xml)
+        _log(progress_path, {"event": "carve_cache_saved", "fingerprint": record["fingerprint"],
+                             "output_sha256": record["output_sha256"]})
+    elif not identity:
+        _log(progress_path, {"event": "carve_cache_unresolved", "reason": "required build identity missing"})
     _log(progress_path, {"event": "build_done", "model": out_xml, "card": card_path, "s": dt})
     return {"model": out_xml, "card": card_path,
             "validations_m9": card["validations_m9"],
